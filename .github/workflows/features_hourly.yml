@@ -13,8 +13,17 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
+
+      - name: Set env vars
+        run: |
+          echo "OPENAQ_API_KEY=${{ secrets.OPENAQ_API_KEY }}" >> $GITHUB_ENV
+          echo "CITY=Karachi" >> $GITHUB_ENV
+          echo "LOOKBACK_DAYS=7" >> $GITHUB_ENV
+
       - run: python src/ingest.py
       - run: python src/features.py
+
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update features"
+
