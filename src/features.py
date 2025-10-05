@@ -1,59 +1,116 @@
-import os, pandas as pd, numpy as np
+"""
+features.py
+===========
+Purpose:
+  Convert the merged raw table (PM2.5 + weather) into:
+    - INPUT FEATURES the model can learn from
+    - FUTURE TARGETS we want to predict (t+24, t+48, t+72 hours)
+Why:
+  Models need helpful signals (lags, rolling means, time-of-day, etc.).
+  We also need labels that represent the future values we’re trying to forecast.
 
-def add_time_features(df, col="ts"):
-    df[col] = pd.to_datetime(df[col], utc=True)
-    df["hour"] = df[col].dt.hour
-    df["dow"]  = df[col].dt.dayofweek
-    df["dom"]  = df[col].dt.day
-    df["month"]= df[col].dt.month
+Input :
+  data/raw/merged_latest.parquet
+Output:
+  data/features/features.parquet
+"""
+
+import os
+import pandas as pd
+import numpy as np
+
+# Central names so it’s easy to change later
+TIME_COL   = "ts"      # our canonical UTC timestamp column
+TARGET_COL = "pm25"    # what we want to predict in the future
+
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add calendar/time signals:
+      - hour of day       (0..23)
+      - day of week       (0=Monday..6=Sunday)
+      - day of month      (1..31)
+      - month of year     (1..12)
+    Reason:
+      Pollution patterns often follow daily/weekly cycles.
+    """
+    df = df.copy()
+    df[TIME_COL] = pd.to_datetime(df[TIME_COL], utc=True)
+    df["hour"]  = df[TIME_COL].dt.hour
+    df["dow"]   = df[TIME_COL].dt.dayofweek
+    df["dom"]   = df[TIME_COL].dt.day
+    df["month"] = df[TIME_COL].dt.month
     return df
 
-def add_lag_roll_targets(df, target="pm25"):
-    # Lags: last hour and yesterday same hour (24h)
-    df[f"{target}_lag1"]  = df[target].shift(1)
-    df[f"{target}_lag24"] = df[target].shift(24)
-    # Rolling means for smoothing
-    df[f"{target}_ma6"]   = df[target].rolling(6).mean()
-    df[f"{target}_ma24"]  = df[target].rolling(24).mean()
-    # Change rate: (current - last hour)
-    df[f"{target}_chg1"]  = df[target] - df[f"{target}_lag1"]
+def add_lag_rolling_change(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add "history" signals of PM2.5:
+      - lag1   : PM2.5 one hour ago
+      - lag24  : PM2.5 24 hours ago (same hour yesterday)
+      - ma6    : mean of last 6 hours (smooth short-term noise)
+      - ma24   : mean of last 24 hours (captures daily trend)
+      - chg1   : difference between current and last hour (is it rising/falling?)
+    Reason:
+      Near-future pollution is strongly related to recent history.
+    """
+    df = df.copy()
+    df[f"{TARGET_COL}_lag1"]  = df[TARGET_COL].shift(1)
+    df[f"{TARGET_COL}_lag24"] = df[TARGET_COL].shift(24)
+    df[f"{TARGET_COL}_ma6"]   = df[TARGET_COL].rolling(6).mean()
+    df[f"{TARGET_COL}_ma24"]  = df[TARGET_COL].rolling(24).mean()
+    df[f"{TARGET_COL}_chg1"]  = df[TARGET_COL] - df[f"{TARGET_COL}_lag1"]
     return df
 
-def make_supervised(df, target="pm25"):
+def add_future_targets(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Build training rows for next 3 days (72 hours).
-    We'll create 3 targets: t+24, t+48, t+72 hours.
+    Create the "labels" we want to predict:
+      - pm25_tplus_24 : PM2.5 value 24 hours ahead
+      - pm25_tplus_48 : PM2.5 value 48 hours ahead
+      - pm25_tplus_72 : PM2.5 value 72 hours ahead
+    We shift NEGATIVELY because we want future rows aligned with current features.
     """
-    out = df.copy()
+    df = df.copy()
     for h in [24, 48, 72]:
-        out[f"{target}_tplus_{h}"] = out[target].shift(-h)
-    # Drop rows with NaNs from lags/future shifts
-    out = out.dropna().reset_index(drop=True)
-    return out
+        df[f"{TARGET_COL}_tplus_{h}"] = df[TARGET_COL].shift(-h)
+    return df
 
-def build_features(in_path="data/raw/merged_latest.parquet", out_path="data/features/features.parquet"):
+def drop_incomplete_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Any row that lacks any of the needed values (lags, rolling means, or future targets)
+    must be dropped because the model cannot train on NaNs.
+    """
+    return df.dropna().reset_index(drop=True)
+
+def build_features(
+    in_path: str = "data/raw/merged_latest.parquet",
+    out_path: str = "data/features/features.parquet",
+) -> pd.DataFrame:
+    """
+    The full feature-engineering pipeline:
+      1) validate input exists and is not empty
+      2) add time features
+      3) add lag/rolling/change features
+      4) add future targets
+      5) drop rows with any missing values
+      6) save to Parquet for training
+    """
     if (not os.path.exists(in_path)) or os.path.getsize(in_path) == 0:
-        raise FileNotFoundError(
-            f"{in_path} is missing or empty. Run `python src/ingest.py` again "
-            "after fixing ingestion (increase OpenAQ radius or enable fallback)."
-        )
+        raise FileNotFoundError(f"{in_path} is missing or empty. Run ingest first.")
+
     df = pd.read_parquet(in_path)
     if df.empty:
         raise ValueError("Merged raw dataset has 0 rows. Fix ingestion first.")
 
-    df = df.sort_values("ts")
+    df = df.sort_values(TIME_COL)
 
-    # ==== your existing helpers here ====
-    # add_time_features, add_lag_roll_targets, make_supervised
-
-    df = add_time_features(df, "ts")
-    df = add_lag_roll_targets(df, "pm25")
-    df = make_supervised(df, "pm25")
+    df = add_time_features(df)
+    df = add_lag_rolling_change(df)
+    df = add_future_targets(df)
+    df = drop_incomplete_rows(df)
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     df.to_parquet(out_path)
     return df
 
 if __name__ == "__main__":
-    df = build_features()
-    print(df.head())
+    out = build_features()
+    print(out.head())
