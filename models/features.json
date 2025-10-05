@@ -1,0 +1,19 @@
+{
+  "feature_names": [
+    "pm25",
+    "pm25_lag1",
+    "pm25_lag24",
+    "pm25_ma6",
+    "pm25_ma24",
+    "pm25_chg1",
+    "temperature_2m",
+    "relative_humidity_2m",
+    "wind_speed_10m",
+    "surface_pressure",
+    "hour",
+    "dow",
+    "dom",
+    "month"
+  ],
+  "target": "pm25_tplus_24"
+}

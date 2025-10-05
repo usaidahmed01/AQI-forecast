@@ -1,0 +1,10 @@
+pandas
+numpy
+requests
+python-dotenv
+duckdb
+pyarrow
+scikit-learn
+joblib
+streamlit
+gradio
