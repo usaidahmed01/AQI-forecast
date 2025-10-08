@@ -1,6 +1,4 @@
 """
-ingest.py
-=========
 Purpose:
   1) Find a city's latitude/longitude and timezone (using Open-Meteo Geocoding)
   2) Download hourly weather for a recent date range (Open-Meteo Forecast)
@@ -9,8 +7,8 @@ Purpose:
   4) Merge weather + PM2.5 on their hourly timestamps
   5) Save raw snapshots as Parquet files inside data/raw/
 Outputs:
-  - data/raw/pm25_<city>.parquet     (PM2.5 time series)
-  - data/raw/weather_<city>.parquet  (Weather time series)
+  - data/raw/pm25_<Karachi>.parquet     (PM2.5 time series)
+  - data/raw/weather_<Karachi>.parquet  (Weather time series)
   - data/raw/merged_latest.parquet   (Merged PM2.5 + Weather, one row per hour)
 
 BEFORE RUNNING (in PowerShell on Windows):
@@ -22,14 +20,15 @@ BEFORE RUNNING (in PowerShell on Windows):
 
 import os
 import time
-import requests
+import requests 
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple
+from zoneinfo import ZoneInfo
 
 # ------------------------------- CONSTANTS ----------------------------------
 
-# OpenAQ base URL (version 3)
+# OpenAQ base URL
 OPENAQ_BASE = "https://api.openaq.org/v3"
 
 # Which weather variables we want from Open-Meteo
@@ -63,6 +62,9 @@ def _iso_utc(dt: datetime) -> str:
     Takes a datetime and returns a UTC ISO8601 string that ends with 'Z'.
     Example: 2025-10-05T12:00:00Z
     """
+    # print("Before ISO " ,  dt)
+    # print("After ISO " ,  dt.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"))
+    
     return dt.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
 
 # --------------------------- GEOCODING + WEATHER -----------------------------
@@ -85,6 +87,7 @@ def geocode_city(city: str) -> Tuple[float, float, str]:
         # If the city name is wrong or not found, it's better to stop now with a clear message
         raise ValueError(f"City not found: {city}")
 
+    # print(data)
     first = data["results"][0]
     latitude = first["latitude"]
     longitude = first["longitude"]
@@ -110,6 +113,7 @@ def fetch_weather(lat: float, lon: float, start: datetime, end: datetime, tz: st
     response = SESSION.get(url, params=params, timeout=30)
     response.raise_for_status()
     js = response.json()
+    # print(js.get("hourly"))
     hourly = js.get("hourly", {})
     if not hourly:
         # If Open-Meteo didn't return hourly data for some reason, return an empty frame with correct columns
@@ -117,6 +121,7 @@ def fetch_weather(lat: float, lon: float, start: datetime, end: datetime, tz: st
 
     # Build a table where each row represents one hour
     df = pd.DataFrame(hourly)
+    # print(df.head())
     df = df.rename(columns={"time": "ts"})  # rename 'time' column to 'ts'
     return df
 
@@ -148,6 +153,8 @@ def find_pm25_location_ids(lat: float, lon: float, radius_m: int = MAX_RADIUS_M,
     response.raise_for_status()
     js = response.json()
     ids = [loc["id"] for loc in js.get("results", [])]
+    
+    print("IDS \n" , ids)
     return ids
 
 def get_pm25_sensor_ids_for_location(location_id: int) -> List[int]:
@@ -163,6 +170,7 @@ def get_pm25_sensor_ids_for_location(location_id: int) -> List[int]:
 
     pm25_ids = []
     results = js.get("results", [])
+    print("Result of PM25 \n" , results)
     for sensor in results:
         param_info = sensor.get("parameter", {})
         is_pm25 = (param_info.get("id") == 2) or (str(param_info.get("name", "")).lower() == "pm25")
@@ -170,78 +178,73 @@ def get_pm25_sensor_ids_for_location(location_id: int) -> List[int]:
             pm25_ids.append(sensor["id"])
     return pm25_ids
 
+
 def fetch_openaq_pm25_v3(lat: float, lon: float, start_iso: str, end_iso: str) -> pd.DataFrame:
     """
-    Step 3C) Pull hourly PM2.5 values from OpenAQ v3:
-      1) Find nearby locations (within radius) that have PM2.5 sensors
-      2) For each location, get the PM2.5 sensor IDs
-      3) For each sensor, request its hourly values in the time window
-      4) Combine everything and average across sensors for each hour
-    Returns a DataFrame with columns: ts, pm25
+    Fetch hourly PM2.5 data from OpenAQ v3 for a city (based on lat/lon).
+    Steps:
+      1. Find nearby monitoring stations with PM2.5 sensors
+      2. Get each sensor's ID
+      3. Download hourly readings for each sensor in the date range
+      4. Merge & average them by hour
+    Returns:
+      DataFrame with columns ['ts', 'pm25']
     """
-    # 1) which locations near the city have PM2.5?
-    location_ids = find_pm25_location_ids(lat, lon, radius_m=MAX_RADIUS_M)
+    # Step 1: find nearby locations that measure PM2.5
+    location_ids = find_pm25_location_ids(lat, lon, radius_m=25000)
     if not location_ids:
+        print("No PM2.5 locations found near this city.")
         return pd.DataFrame(columns=["ts", "pm25"])
+    print("Found locations:", location_ids)
 
-    # 2) collect PM2.5 sensor IDs (unique list)
-    sensor_ids: List[int] = []
+    # Step 2: collect all PM2.5 sensor IDs from those locations
+    sensor_ids = []
     for loc_id in location_ids:
         try:
             sensor_ids.extend(get_pm25_sensor_ids_for_location(loc_id))
-            time.sleep(0.1)  # small pause so we don't hammer the API
+            time.sleep(0.1)
         except requests.HTTPError:
-            # if one location fails, skip it and continue
             continue
-    sensor_ids = list(dict.fromkeys(sensor_ids))  # remove duplicates in order
+    sensor_ids = list(dict.fromkeys(sensor_ids))  # remove duplicates
     if not sensor_ids:
+        print("No PM2.5 sensors found in those locations.")
         return pd.DataFrame(columns=["ts", "pm25"])
+    print("Found sensors:", sensor_ids)
 
-    # 3) read hourly values for each sensor
-    frames: List[pd.DataFrame] = []
+    # Step 3: fetch hourly readings for each sensor
+    all_frames = []
     for sid in sensor_ids:
         url = f"{OPENAQ_BASE}/sensors/{sid}/hours"
         params = {"date_from": start_iso, "date_to": end_iso, "limit": 1000}
         try:
-            response = SESSION.get(url, headers=_openaq_headers(), params=params, timeout=30)
-            response.raise_for_status()
-            rows = response.json().get("results", [])
-            if len(rows) == 0:
+            r = requests.get(url, headers=_openaq_headers(), params=params, timeout=30)
+            r.raise_for_status()
+            data = r.json().get("results", [])
+            if not data:
                 continue
-
-            # Build a table for this sensor
-            # We also guard against missing keys to avoid KeyError
-            table_rows = []
-            for row in rows:
-                utc_str = None
-                if "datetime" in row and isinstance(row["datetime"], dict):
-                    utc_str = row["datetime"].get("utc")
-                value = row.get("value")
-                if utc_str is not None and value is not None:
-                    table_rows.append({"ts": utc_str, "pm25": value})
-
-            if len(table_rows) > 0:
-                df = pd.DataFrame(table_rows)
-                # convert to UTC pandas timestamps and align exactly to the hour
-                df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.floor("H")
-                frames.append(df)
+            # Extract timestamp and value safely
+            rows = [
+                {"ts": row["datetime"]["utc"], "pm25": row["value"]}
+                for row in data
+                if "datetime" in row and "utc" in row["datetime"] and "value" in row
+            ]
+            df = pd.DataFrame(rows)
+            df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.floor("H")
+            all_frames.append(df)
         except requests.HTTPError:
-            # if a sensor fails, ignore it and continue with others
             continue
+        time.sleep(0.1)
 
-        time.sleep(0.1)  # be gentle
-
-    if len(frames) == 0:
+    # Step 4: merge all readings and average by hour
+    if not all_frames:
+        print("No hourly readings received from OpenAQ.")
         return pd.DataFrame(columns=["ts", "pm25"])
 
-    # 4) stack all sensors and average per hour
-    all_rows = pd.concat(frames, ignore_index=True)
-    hourly = (
-        all_rows.groupby("ts", as_index=False)["pm25"]
-        .mean()
-        .sort_values("ts")
-    )
-    return hourly
+    combined = pd.concat(all_frames, ignore_index=True)
+    hourly_avg = combined.groupby("ts", as_index=False)["pm25"].mean().sort_values("ts")
+    print(f"Collected {len(hourly_avg)} hourly records.")
+    return hourly_avg
+
 
 # --------------------------- OPEN-METEO FALLBACK -----------------------------
 
@@ -268,6 +271,9 @@ def fetch_openmeteo_pm25(lat: float, lon: float, start_dt: datetime, end_dt: dat
 
     df = pd.DataFrame({"ts": hourly["time"], "pm25": hourly["pm2_5"]})
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
+    
+    print("hourly \n" , df.sort_values('ts'))
+    
     return df.sort_values("ts")
 
 # ------------------------------- MAIN FLOW -----------------------------------
@@ -290,8 +296,11 @@ def ingest(city: str = "Karachi", lookback_days: int = 30) -> pd.DataFrame:
 
     # 2) weather table (local tz labels, plus UTC copy)
     weather = fetch_weather(lat, lon, start_utc, now_utc, tz=tz)
-    weather["ts"] = pd.to_datetime(weather["ts"])              # parse whatever tz label Open-Meteo used
+    # print("Before \n" , weather.head())
+    weather["ts"] = pd.to_datetime(weather["ts"])                # parse whatever tz label Open-Meteo used
+    # print("After \n" , weather.head())
     weather["ts_utc"] = pd.to_datetime(weather["ts"], utc=True)  # canonical UTC
+    # print("Acc to UTC \n" , weather.head())
 
     # 3) pm25 table (prefer OpenAQ, else fallback to Open-Meteo air quality)
     aq_start = _iso_utc(start_utc)
@@ -312,6 +321,7 @@ def ingest(city: str = "Karachi", lookback_days: int = 30) -> pd.DataFrame:
         tolerance=pd.Timedelta("30min"),
     )
     merged = merged.rename(columns={"ts_utc": "ts"})  # final time column is 'ts' in UTC
+    merged['ts_local'] = merged['ts'].dt.tz_convert(ZoneInfo("Asia/Karachi"))
 
     # 5) save raw snapshots (for reproducibility and debugging)
     os.makedirs("data/raw", exist_ok=True)
@@ -319,6 +329,8 @@ def ingest(city: str = "Karachi", lookback_days: int = 30) -> pd.DataFrame:
     pm25_out = pm25.drop(columns=["ts"], errors="ignore").rename(columns={"ts_utc": "ts"})
     pm25_out.to_parquet(f"data/raw/pm25_{city}.parquet")
     weather.to_parquet(f"data/raw/weather_{city}.parquet")
+    
+    print("Local Time \n", merged['ts_local'])
 
     return merged
 

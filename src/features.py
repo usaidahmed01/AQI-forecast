@@ -39,6 +39,7 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     df["dow"]   = df[TIME_COL].dt.dayofweek
     df["dom"]   = df[TIME_COL].dt.day
     df["month"] = df[TIME_COL].dt.month
+    print("time featuring \n" , df.head())
     return df
 
 def add_lag_rolling_change(df: pd.DataFrame) -> pd.DataFrame:
@@ -58,6 +59,7 @@ def add_lag_rolling_change(df: pd.DataFrame) -> pd.DataFrame:
     df[f"{TARGET_COL}_ma6"]   = df[TARGET_COL].rolling(6).mean()
     df[f"{TARGET_COL}_ma24"]  = df[TARGET_COL].rolling(24).mean()
     df[f"{TARGET_COL}_chg1"]  = df[TARGET_COL] - df[f"{TARGET_COL}_lag1"]
+    print("Lag , Rolling \n" , df.head())
     return df
 
 def add_future_targets(df: pd.DataFrame) -> pd.DataFrame:
@@ -71,6 +73,8 @@ def add_future_targets(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for h in [24, 48, 72]:
         df[f"{TARGET_COL}_tplus_{h}"] = df[TARGET_COL].shift(-h)
+        
+    print("Future Targets \n" , df.head())
     return df
 
 def drop_incomplete_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -78,6 +82,8 @@ def drop_incomplete_rows(df: pd.DataFrame) -> pd.DataFrame:
     Any row that lacks any of the needed values (lags, rolling means, or future targets)
     must be dropped because the model cannot train on NaNs.
     """
+    
+    print("Clean Data \n",  df.dropna().reset_index(drop=True).head())
     return df.dropna().reset_index(drop=True)
 
 def build_features(
