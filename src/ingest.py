@@ -25,6 +25,9 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ------------------------------- CONSTANTS ----------------------------------
 
@@ -309,7 +312,10 @@ def ingest(city: str = "Karachi", lookback_days: int = 30) -> pd.DataFrame:
     if pm25.empty:
         print("WARN: OpenAQ returned no PM2.5 rows; using Open-Meteo fallback.")
         pm25 = fetch_openmeteo_pm25(lat, lon, start_utc, now_utc)
+    print("pm25 table \n" , pm25.head())
     pm25["ts_utc"] = pd.to_datetime(pm25["ts"], utc=True)
+    print("pm25 table with utc time \n" , pm25.head())
+    
 
     # 4) merge the two tables by time — we merge "as of" the nearest timestamp,
     #    but only if the gap is <= 30 minutes to avoid wrong matches

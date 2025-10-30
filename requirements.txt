@@ -1,10 +1,42 @@
-pandas
-numpy
-requests
-python-dotenv
-duckdb
-pyarrow
-scikit-learn
-joblib
-streamlit
-gradio
+# pandas
+# numpy
+# requests
+# python-dotenv
+# duckdb
+# pyarrow
+# scikit-learn
+# joblib
+# streamlit
+# gradio
+# hopsworks
+
+
+
+
+
+
+
+
+
+# Core
+pandas==2.2.2
+numpy==1.26.4
+requests==2.32.3
+python-dotenv==1.0.1
+
+# Storage / parquet
+pyarrow==16.1.0
+duckdb==0.10.2
+# Optional alternate parquet engine (commented by default)
+# fastparquet==2024.5.0
+
+# ML
+scikit-learn==1.4.2
+joblib==1.3.2
+
+# UI (optional for later steps)
+streamlit==1.36.0
+gradio==4.44.0
+
+# Hopsworks: install in CI (Linux) only, not on Windows dev machine
+hopsworks>=3.4,<4.0 ; sys_platform != "win32"
