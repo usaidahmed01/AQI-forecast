@@ -1,41 +1,11 @@
-# name: train-daily
-
-# permissions:
-#   contents: write
-
-# on:
-#   schedule:
-#     - cron: "0 19 * * *"  # daily at 12:00 PKT
-#   workflow_dispatch:
-
-# jobs:
-#   train:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: actions/setup-python@v5
-#         with:
-#           python-version: "3.11"
-#       - run: pip install -r requirements.txt
-#       - run: python src/train.py
-#       - uses: actions/upload-artifact@v4
-#         with:
-#           name: models
-#           path: models/
-
-
-
-
-
-
 name: train-daily
 
 permissions:
-  contents: write
+  contents: write  # needed for the auto-commit step
 
 on:
   schedule:
-    - cron: "0 19 * * *"
+    - cron: "0 19 * * *"   # 19:00 UTC (== 00:00 PKT next day). Change if you want a different local time.
   workflow_dispatch:
 
 jobs:
@@ -54,8 +24,31 @@ jobs:
       - name: Train (multi-horizon)
         run: python src/train.py
 
-      # --- NEW: Push engineered features.parquet to Hopsworks Feature Store ---
+      # --- NEW: Sync winners into models/latest for Streamlit ---
+      - name: Sync models/latest directory
+        run: |
+          mkdir -p models/latest
+          rm -f models/latest/*.joblib || true
+          rm -f models/latest/features.json || true
+          rm -f models/latest/report.json || true
+
+          # copy best per horizon (filenames produced by train.py)
+          cp models/*tplus24.joblib models/latest/ || true
+          cp models/*tplus48.joblib models/latest/ || true
+          cp models/*tplus72.joblib models/latest/ || true
+
+          # metadata used by the UI
+          cp models/features.json models/latest/
+          cp models/report.json models/latest/
+
+      - name: Commit models/latest back to repo
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(models): refresh models/latest from train-daily"
+
+      # --- (Optional) Push engineered features to Hopsworks Feature Store ---
       - name: Push features to Hopsworks
+        if: ${{ env.HOPSWORKS_PROJECT != '' && env.HOPSWORKS_API_KEY != '' }}
         env:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
@@ -63,8 +56,9 @@ jobs:
           pip install "hopsworks>=3.4,<4.0"
           python src/push_features_hopsworks.py
 
-      # --- NEW: Register 24/48/72h models in Hopsworks Model Registry ---
+      # --- (Optional) Register 24/48/72h models in Hopsworks Model Registry ---
       - name: Register models to Hopsworks
+        if: ${{ env.HOPSWORKS_PROJECT != '' && env.HOPSWORKS_API_KEY != '' }}
         env:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
