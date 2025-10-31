@@ -67,7 +67,6 @@
 
 
 
-
 """
 push_features_hopsworks.py
 Upload engineered features (data/features/features.parquet) to Hopsworks Feature Store.
@@ -79,9 +78,7 @@ Env:
 import os
 import pandas as pd
 from zoneinfo import ZoneInfo
-
-# Use HSFS directly (no hopsworks import to avoid version clash)
-from hsfs import connection  # pip install hsfs
+import hsfs  # <-- import the package, we'll call hsfs.connection(...)
 
 FEATURES_PATH = "data/features/features.parquet"
 FG_NAME = "aqi_features_hourly"
@@ -95,6 +92,7 @@ def main():
 
     # Normalize event time to UTC for the feature store
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
+    # If 'ts' is naive, assume PKT then convert to UTC
     if df["ts"].dt.tz is None:
         df["ts"] = (
             pd.to_datetime(df["ts"])
@@ -102,13 +100,13 @@ def main():
             .dt.tz_convert("UTC")
         )
 
-    # Connect with HSFS directly (no hopsworks import)
     proj = os.getenv("HOPSWORKS_PROJECT")
     apikey = os.getenv("HOPSWORKS_API_KEY")
     if not proj or not apikey:
         raise RuntimeError("HOPSWORKS_PROJECT / HOPSWORKS_API_KEY not set")
 
-    conn = connection.Connection(
+    # Use the function API (not a class attribute)
+    conn = hsfs.connection(
         host="c.app.hopsworks.ai",
         port=443,
         project=proj,
@@ -116,7 +114,7 @@ def main():
         hostname_verification=True,
         engine="python",
     )
-    fs = conn.get_feature_store()  # default project feature store
+    fs = conn.get_feature_store()
 
     fg = fs.get_or_create_feature_group(
         name=FG_NAME,
@@ -127,7 +125,6 @@ def main():
         online_enabled=False,
     )
 
-    # write via Python engine (will use Kafka writer; we install confluent-kafka in CI)
     fg.insert(df, write_options={"wait_for_job": True})
     print(f"Inserted {len(df)} rows into Feature Group {FG_NAME} v{FG_VERSION}.")
     conn.close()
