@@ -87,7 +87,12 @@ jobs:
         run: |
           set -e
           pip uninstall -y hopsworks hsfs hsml confluent-kafka protobuf || true
-          pip install "hopsworks==4.2.9" "hsfs[python]==3.7.9" "hsml==3.7.2" "confluent-kafka<3" "protobuf>=4.25,<5"
+          pip install \
+            "hopsworks==4.2.9" \
+            "hsfs[python]==3.7.6" \
+            "hsml==3.7.2" \
+            "confluent-kafka<3" \
+            "protobuf>=4.25,<5"
           python src/push_features_hopsworks.py
 
 
@@ -101,7 +106,12 @@ jobs:
       #   run: |
       #     set -e
       #     pip uninstall -y hopsworks hsfs hsml confluent-kafka protobuf || true
-      #     pip install "hopsworks==4.2.9" "hsfs[python]==3.7.9" "hsml==3.7.2" "confluent-kafka<3" "protobuf>=4.25,<5"
+      #     pip install \
+      #       "hopsworks==4.2.9" \
+      #       "hsfs[python]==3.7.6" \
+      #       "hsml==3.7.2" \
+      #       "confluent-kafka<3" \
+      #       "protobuf>=4.25,<5"
       #     python src/register_hopsworks.py
 
       - uses: actions/upload-artifact@v4
