@@ -91,11 +91,21 @@ jobs:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
-          # Clean any wrong versions that might be preinstalled
+          set -e
           pip uninstall -y hopsworks hsfs hsml confluent-kafka || true
-          # Install versions compatible with backend 4.2.x
-          pip install "hopsworks[python]==4.2.*" "hsfs>=3.7,<3.8" "hsml>=3.7,<3.8" "confluent-kafka<3"
+          pip install "hopsworks[python]==4.2.*" "hsfs==3.9.0rc24" "hsml==3.9.0rc24" "confluent-kafka<3"
           python src/push_features_hopsworks.py
+
+      - name: Register models to Hopsworks
+        if: ${{ env.HAVE_HOPSWORKS == 'true' }}
+        env:
+          HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          set -e
+          pip uninstall -y hopsworks hsfs hsml confluent-kafka || true
+          pip install "hopsworks[python]==4.2.*" "hsfs==3.9.0rc24" "hsml==3.9.0rc24" "confluent-kafka<3"
+          python src/register_hopsworks.py
 
       # --- (Optional) Register 24/48/72h models in Hopsworks Model Registry ---
       - name: Register models to Hopsworks
