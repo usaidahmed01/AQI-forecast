@@ -1,11 +1,11 @@
 name: train-daily
 
 permissions:
-  contents: write  # needed for the auto-commit step
+  contents: write
 
 on:
   schedule:
-    - cron: "0 19 * * *"   # 19:00 UTC (== 00:00 PKT next day). Change if you want a different local time.
+    - cron: "0 19 * * *"   # 19:00 UTC (≈ 00:00 PKT)
   workflow_dispatch:
 
 jobs:
@@ -24,36 +24,28 @@ jobs:
       - name: Train (multi-horizon)
         run: python src/train.py
 
-      # --- NEW: Sync winners into models/latest for Streamlit ---
       - name: Sync models/latest directory
         shell: bash
         run: |
           set -euo pipefail
-
           echo "=== MODELS TREE (before sync) ==="
           ls -R models || true
 
           mkdir -p models/latest
           rm -f models/latest/* || true
 
-          # Find the newest produced joblib (any horizon) and use its folder as src.
-          newest_joblib="$(find models -type f -name '*tplus*.joblib' -printf '%T@ %p\n' \
-                            | sort -n | tail -n1 | cut -d' ' -f2- || true)"
+          newest_joblib="$(find models -type f -name '*tplus*.joblib' -printf '%T@ %p\n' | sort -n | tail -n1 | cut -d' ' -f2- || true)"
           if [ -n "${newest_joblib}" ]; then
             src_dir="$(dirname "${newest_joblib}")"
           else
-            # Fallback: maybe train.py wrote directly to models/
             src_dir="models"
           fi
-
           echo "Using source directory: ${src_dir}"
 
-          # Copy horizons if present (no-fail when none match)
           find "${src_dir}" -maxdepth 1 -name '*tplus24.joblib' -exec cp -t models/latest {} + || true
           find "${src_dir}" -maxdepth 1 -name '*tplus48.joblib' -exec cp -t models/latest {} + || true
           find "${src_dir}" -maxdepth 1 -name '*tplus72.joblib' -exec cp -t models/latest {} + || true
 
-          # Copy metadata (prefer src_dir; if missing, look in models root)
           if [ -f "${src_dir}/features.json" ]; then
             cp "${src_dir}/features.json" models/latest/
           elif [ -f "models/features.json" ]; then
@@ -69,7 +61,6 @@ jobs:
           echo "=== models/latest content ==="
           ls -l models/latest || true
 
-
       - name: Commit models/latest back to repo
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
@@ -83,27 +74,43 @@ jobs:
           else
             echo "HAVE_HOPSWORKS=false" >> "$GITHUB_ENV"
           fi
-      
+
+      # ---------- Hopsworks: push features ----------
       - name: Push features to Hopsworks
         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         env:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        shell: bash
         run: |
           set -e
-          pip uninstall -y hopsworks hsfs hsml confluent-kafka || true
-          pip install "hopsworks[python]==4.2.*" "hsfs==3.9.0rc24" "hsml==3.9.0rc0" "confluent-kafka<3"
+          pip uninstall -y hopsworks hsfs hsml protobuf confluent-kafka || true
+          pip install "protobuf>=4.25.4,<5" 'confluent-kafka<3' 'hopsworks[python]==4.2.*'
+
+          python -c "import importlib, google.protobuf as gp, hopsworks, hsfs; \
+print('hopsworks:', hopsworks.__version__); print('hsfs:', hsfs.__version__); \
+print('hsml:', getattr(importlib.import_module('hsml'),'__version__','<missing>')); \
+print('protobuf:', gp.__version__)"
+
           python src/push_features_hopsworks.py
 
+      # ---------- Hopsworks: register models ----------
       - name: Register models to Hopsworks
         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         env:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        shell: bash
         run: |
           set -e
-          pip uninstall -y hopsworks hsfs hsml confluent-kafka || true
-          pip install "hopsworks[python]==4.2.*" "hsfs==3.9.0rc24" "hsml==3.9.0rc0" "confluent-kafka<3"
+          pip uninstall -y hopsworks hsfs hsml protobuf confluent-kafka || true
+          pip install "protobuf>=4.25.4,<5" 'confluent-kafka<3' 'hopsworks[python]==4.2.*'
+
+          python -c "import importlib, google.protobuf as gp, hopsworks, hsfs; \
+print('hopsworks:', hopsworks.__version__); print('hsfs:', hsfs.__version__); \
+print('hsml:', getattr(importlib.import_module('hsml'),'__version__','<missing>')); \
+print('protobuf:', gp.__version__)"
+
           python src/register_hopsworks.py
 
       - uses: actions/upload-artifact@v4
