@@ -22,7 +22,7 @@ matplotlib
 shap
 
 # Hopsworks: install in CI (Linux) only, not on Windows dev machine
-hopsworks>=3.4,<4.0 ; sys_platform != "win32"
+hopsworks ; sys_platform != "win32"
 
 
 

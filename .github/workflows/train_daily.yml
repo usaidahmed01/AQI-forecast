@@ -91,7 +91,7 @@ jobs:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
-          pip install "hopsworks>=3.4,<4.0"
+          pip install "hopsworks"
           python src/push_features_hopsworks.py
 
       # --- (Optional) Register 24/48/72h models in Hopsworks Model Registry ---
@@ -101,7 +101,7 @@ jobs:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
-          pip install "hopsworks>=3.4,<4.0"
+          pip install "hopsworks"
           python src/register_hopsworks.py
 
       - uses: actions/upload-artifact@v4
