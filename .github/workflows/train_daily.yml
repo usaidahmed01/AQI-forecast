@@ -91,9 +91,10 @@ jobs:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
-          # Force a clean, backend-compatible install (4.2.*) and include Kafka extra
+          # Clean any wrong versions that might be preinstalled
           pip uninstall -y hopsworks hsfs hsml confluent-kafka || true
-          pip install "hopsworks[python]==4.2.*" "hsfs==4.2.*" "hsml==4.2.*" "confluent-kafka<3"
+          # Install versions compatible with backend 4.2.x
+          pip install "hopsworks[python]==4.2.*" "hsfs>=3.7,<3.8" "hsml>=3.7,<3.8" "confluent-kafka<3"
           python src/push_features_hopsworks.py
 
       # --- (Optional) Register 24/48/72h models in Hopsworks Model Registry ---
@@ -104,9 +105,8 @@ jobs:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
           pip uninstall -y hopsworks hsfs hsml confluent-kafka || true
-          pip install "hopsworks[python]==4.2.*" "hsfs==4.2.*" "hsml==4.2.*" "confluent-kafka<3"
+          pip install "hopsworks[python]==4.2.*" "hsfs>=3.7,<3.8" "hsml>=3.7,<3.8" "confluent-kafka<3"
           python src/register_hopsworks.py
-
 
       - uses: actions/upload-artifact@v4
         with:
