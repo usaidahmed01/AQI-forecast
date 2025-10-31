@@ -87,27 +87,38 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Start clean and install only the Feature Store pieces to avoid protobuf conflicts
-          pip uninstall -y hopsworks hsfs hsml hopsworks-common protobuf confluent-kafka || true
-          pip install --no-deps 'hopsworks==4.2.*'
-          pip install 'hsfs==4.2.*' 'hopsworks-common==4.2.*' 'protobuf>=4.25.4,<5' 'confluent-kafka<3'
+          # start clean
+          pip uninstall -y hopsworks hsfs hopsworks-common hsml protobuf confluent-kafka || true
+
+          # exact, compatible pins
+          pip install 'hopsworks==4.2.9' 'hsfs==3.7.9' 'hopsworks-common==4.2.9' \
+                      'protobuf>=4.25.4,<5' 'confluent-kafka<3'
+
+          # quick sanity print
+          python - <<'PY'
+      import hopsworks, hsfs, google.protobuf as gp
+      print("hopsworks:", hopsworks.__version__)
+      print("hsfs:", hsfs.__version__)
+      print("protobuf:", gp.__version__)
+      PY
+
           python src/push_features_hopsworks.py
 
-      # ---------- Model registry (disabled until hsml 4.2 wheels for Py3.11) ----------
-      - name: Register models to Hopsworks
-        if: ${{ false }}  # re-enable later when hsml 4.2.* is available
-        env:
-          HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
-          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
-        shell: bash
-        run: |
-          set -e
-          echo "Temporarily disabled due to hsml/protobuf compatibility."
-          # When enabling:
-          # pip uninstall -y hopsworks hsfs hsml hopsworks-common protobuf confluent-kafka || true
-          # pip install --no-deps 'hopsworks==4.2.*'
-          # pip install 'hsfs==4.2.*' 'hopsworks-common==4.2.*' 'protobuf>=4.25.4,<5' 'confluent-kafka<3' 'hsml==4.2.*'
-          # python src/register_hopsworks.py
+      # ---------- Model registry ----------
+      # - name: Register models to Hopsworks
+      #   if: ${{ false }}  # re-enable later when hsml 4.2.* is available
+      #   env:
+      #     HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+      #     HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+      #   shell: bash
+      #   run: |
+      #     set -e
+      #     echo "Temporarily disabled due to hsml/protobuf compatibility."
+      #     # When enabling:
+      #     # pip uninstall -y hopsworks hsfs hsml hopsworks-common protobuf confluent-kafka || true
+      #     # pip install --no-deps 'hopsworks==4.2.*'
+      #     # pip install 'hsfs==4.2.*' 'hopsworks-common==4.2.*' 'protobuf>=4.25.4,<5' 'confluent-kafka<3' 'hsml==4.2.*'
+      #     # python src/register_hopsworks.py
 
       - uses: actions/upload-artifact@v4
         with:
