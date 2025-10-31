@@ -106,7 +106,6 @@ jobs:
           pip install "hopsworks[python]==4.2.*" "hsfs==3.9.0rc24" "hsml==3.9.0rc0" "confluent-kafka<3"
           python src/register_hopsworks.py
 
-
       - uses: actions/upload-artifact@v4
         with:
           name: models
