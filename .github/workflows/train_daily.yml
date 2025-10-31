@@ -93,15 +93,6 @@ jobs:
           # exact, compatible pins
           pip install 'hopsworks==4.2.9' 'hsfs==3.7.9' 'hopsworks-common==4.2.9' \
                       'protobuf>=4.25.4,<5' 'confluent-kafka<3'
-
-          # quick sanity print
-          python - <<'PY'
-      import hopsworks, hsfs, google.protobuf as gp
-      print("hopsworks:", hopsworks.__version__)
-      print("hsfs:", hsfs.__version__)
-      print("protobuf:", gp.__version__)
-      PY
-
           python src/push_features_hopsworks.py
 
       # ---------- Model registry ----------
