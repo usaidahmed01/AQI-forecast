@@ -87,16 +87,9 @@ jobs:
         shell: bash
         run: |
           set -e
-
-          # Start clean (ignore if not installed)
           pip uninstall -y hopsworks hsfs hsml protobuf confluent-kafka || true
-
-          # ✅ Compatible trio for backend 4.2.x on Python 3.11
-          pip install \
-            'hopsworks==4.2.9' \
-            'hsfs==3.7.9' \
-            'protobuf>=4.25.4,<5' \
-            'confluent-kafka<3'
+          # Stable combo for Python 3.11 + Hopsworks 4.2 backend using HSFS only
+          pip install 'hsfs==3.7.9' 'protobuf>=4.25.4,<5' 'confluent-kafka<3'
           python src/push_features_hopsworks.py
 
 
