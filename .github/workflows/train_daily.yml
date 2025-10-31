@@ -84,30 +84,25 @@ jobs:
         env:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
-        shell: bash
         run: |
           set -e
-          pip uninstall -y hopsworks hsfs hsml protobuf confluent-kafka || true
-          # Stable combo for Python 3.11 + Hopsworks 4.2 backend using HSFS only
-          pip install 'hsfs==3.7.9' 'protobuf>=4.25.4,<5' 'confluent-kafka<3'
+          pip uninstall -y hopsworks hsfs hsml confluent-kafka protobuf || true
+          pip install "hopsworks==4.2.9" "hsfs[python]==3.7.9" "hsml==3.7.2" "confluent-kafka<3" "protobuf>=4.25,<5"
           python src/push_features_hopsworks.py
+
 
 
       # ---------- Model registry ----------
       # - name: Register models to Hopsworks
-      #   if: ${{ false }}  # re-enable later when hsml 4.2.* is available
+      #   if: ${{ env.HAVE_HOPSWORKS == 'true' }}
       #   env:
       #     HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
       #     HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
-      #   shell: bash
       #   run: |
       #     set -e
-      #     echo "Temporarily disabled due to hsml/protobuf compatibility."
-      #     # When enabling:
-      #     # pip uninstall -y hopsworks hsfs hsml hopsworks-common protobuf confluent-kafka || true
-      #     # pip install --no-deps 'hopsworks==4.2.*'
-      #     # pip install 'hsfs==4.2.*' 'hopsworks-common==4.2.*' 'protobuf>=4.25.4,<5' 'confluent-kafka<3' 'hsml==4.2.*'
-      #     # python src/register_hopsworks.py
+      #     pip uninstall -y hopsworks hsfs hsml confluent-kafka protobuf || true
+      #     pip install "hopsworks==4.2.9" "hsfs[python]==3.7.9" "hsml==3.7.2" "confluent-kafka<3" "protobuf>=4.25,<5"
+      #     python src/register_hopsworks.py
 
       - uses: actions/upload-artifact@v4
         with:
