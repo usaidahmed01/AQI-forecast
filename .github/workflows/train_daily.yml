@@ -26,29 +26,67 @@ jobs:
 
       # --- NEW: Sync winners into models/latest for Streamlit ---
       - name: Sync models/latest directory
+        shell: bash
         run: |
+          set -euo pipefail
+
+          echo "=== MODELS TREE (before sync) ==="
+          ls -R models || true
+
           mkdir -p models/latest
-          rm -f models/latest/*.joblib || true
-          rm -f models/latest/features.json || true
-          rm -f models/latest/report.json || true
+          rm -f models/latest/* || true
 
-          # copy best per horizon (filenames produced by train.py)
-          cp models/*tplus24.joblib models/latest/ || true
-          cp models/*tplus48.joblib models/latest/ || true
-          cp models/*tplus72.joblib models/latest/ || true
+          # Find the newest produced joblib (any horizon) and use its folder as src.
+          newest_joblib="$(find models -type f -name '*tplus*.joblib' -printf '%T@ %p\n' \
+                            | sort -n | tail -n1 | cut -d' ' -f2- || true)"
+          if [ -n "${newest_joblib}" ]; then
+            src_dir="$(dirname "${newest_joblib}")"
+          else
+            # Fallback: maybe train.py wrote directly to models/
+            src_dir="models"
+          fi
 
-          # metadata used by the UI
-          cp models/features.json models/latest/
-          cp models/report.json models/latest/
+          echo "Using source directory: ${src_dir}"
+
+          # Copy horizons if present (no-fail when none match)
+          find "${src_dir}" -maxdepth 1 -name '*tplus24.joblib' -exec cp -t models/latest {} + || true
+          find "${src_dir}" -maxdepth 1 -name '*tplus48.joblib' -exec cp -t models/latest {} + || true
+          find "${src_dir}" -maxdepth 1 -name '*tplus72.joblib' -exec cp -t models/latest {} + || true
+
+          # Copy metadata (prefer src_dir; if missing, look in models root)
+          if [ -f "${src_dir}/features.json" ]; then
+            cp "${src_dir}/features.json" models/latest/
+          elif [ -f "models/features.json" ]; then
+            cp "models/features.json" models/latest/
+          fi
+
+          if [ -f "${src_dir}/report.json" ]; then
+            cp "${src_dir}/report.json" models/latest/
+          elif [ -f "models/report.json" ]; then
+            cp "models/report.json" models/latest/
+          fi
+
+          echo "=== models/latest content ==="
+          ls -l models/latest || true
+
 
       - name: Commit models/latest back to repo
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore(models): refresh models/latest from train-daily"
 
+      - name: Set Hopsworks presence flag
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.HOPSWORKS_PROJECT }}" ] && [ -n "${{ secrets.HOPSWORKS_API_KEY }}" ]; then
+            echo "HAVE_HOPSWORKS=true" >> "$GITHUB_ENV"
+          else
+            echo "HAVE_HOPSWORKS=false" >> "$GITHUB_ENV"
+          fi
+      
       # --- (Optional) Push engineered features to Hopsworks Feature Store ---
       - name: Push features to Hopsworks
-        if: ${{ env.HOPSWORKS_PROJECT != '' && env.HOPSWORKS_API_KEY != '' }}
+        if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         env:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
@@ -58,7 +96,7 @@ jobs:
 
       # --- (Optional) Register 24/48/72h models in Hopsworks Model Registry ---
       - name: Register models to Hopsworks
-        if: ${{ env.HOPSWORKS_PROJECT != '' && env.HOPSWORKS_API_KEY != '' }}
+        if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         env:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
