@@ -79,6 +79,12 @@ jobs:
           fi
 
       # ---------- Hopsworks: push features (no hsml here) ----------
+      - name: Switch to Python 3.10 for Hopsworks
+        if: ${{ env.HAVE_HOPSWORKS == 'true' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
       - name: Push features to Hopsworks
         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         env:
@@ -86,18 +92,19 @@ jobs:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
           set -e
+          python -V
+          pip install --upgrade "pip<25"  # pip 25 sometimes over-constrains RCs
+          # Clean any leftovers from earlier steps
           pip uninstall -y hopsworks hsfs hsml confluent-kafka protobuf || true
+          # Let resolver pick a matching hsfs/hsml for 3.10 with hopsworks 4.2.x
           pip install \
-            "hopsworks==4.2.9" \
-            "hsfs[python]==3.7.6" \
-            "hsml==3.7.2" \
-            "confluent-kafka<3" \
-            "protobuf>=4.25,<5"
+            "hopsworks>=4.2,<4.3" \
+            "hsfs[python]>=3.9,<3.10" \
+            "hsml>=3.9,<3.10" \
+            "protobuf>=4.25,<5" \
+            "confluent-kafka<3"
           python src/push_features_hopsworks.py
 
-
-
-      # ---------- Model registry ----------
       # - name: Register models to Hopsworks
       #   if: ${{ env.HAVE_HOPSWORKS == 'true' }}
       #   env:
@@ -105,13 +112,7 @@ jobs:
       #     HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
       #   run: |
       #     set -e
-      #     pip uninstall -y hopsworks hsfs hsml confluent-kafka protobuf || true
-      #     pip install \
-      #       "hopsworks==4.2.9" \
-      #       "hsfs[python]==3.7.6" \
-      #       "hsml==3.7.2" \
-      #       "confluent-kafka<3" \
-      #       "protobuf>=4.25,<5"
+      #     # keep same environment from previous step
       #     python src/register_hopsworks.py
 
       - uses: actions/upload-artifact@v4
