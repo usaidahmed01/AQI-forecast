@@ -63,9 +63,6 @@
 
 
 
-
-
-
 """
 push_features_hopsworks.py
 Upload engineered features (data/features/features.parquet) to Hopsworks Feature Store.
@@ -79,49 +76,58 @@ import os
 import pandas as pd
 from zoneinfo import ZoneInfo
 
-import hsfs
+# HSFS: use the connection() FUNCTION in rc7 (not connection.connection / not Connection class)
 from hsfs import connection as hsfs_connection
-
 
 FEATURES_PATH = "data/features/features.parquet"
 FG_NAME = "aqi_features_hourly"
-FG_VERSION = 1
+FG_VERSION = 1  # bump if schema changes
 
 def main():
     if not os.path.exists(FEATURES_PATH) or os.path.getsize(FEATURES_PATH) == 0:
         raise FileNotFoundError(f"{FEATURES_PATH} missing or empty. Run features first.")
 
     df = pd.read_parquet(FEATURES_PATH)
+
+    # Normalize event time to UTC
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
-    if df["ts"].dt.tz is None:
+    # If somehow naive, assume Asia/Karachi then convert to UTC
+    if getattr(df["ts"].dt, "tz", None) is None:
         df["ts"] = pd.to_datetime(df["ts"]).dt.tz_localize(ZoneInfo("Asia/Karachi")).dt.tz_convert("UTC")
 
-    api_key = os.getenv("HOPSWORKS_API_KEY")
     project = os.getenv("HOPSWORKS_PROJECT")
-    if not api_key or not project:
-        raise RuntimeError("HOPSWORKS_API_KEY/HOPSWORKS_PROJECT not set.")
+    api_key = os.getenv("HOPSWORKS_API_KEY")
+    if not project or not api_key:
+        raise RuntimeError("HOPSWORKS_PROJECT / HOPSWORKS_API_KEY not set.")
 
-    conn = hsfs_connection.connection(
+    # ✅ Call the function directly
+    conn = hsfs_connection(
         host="c.app.hopsworks.ai",
         port=443,
-        project=os.getenv("HOPSWORKS_PROJECT"),
-        api_key_value=os.getenv("HOPSWORKS_API_KEY"),
+        project=project,
+        api_key_value=api_key,
         engine="python",
     )
-    fs = conn.get_feature_store()
+    try:
+        fs = conn.get_feature_store()
 
-    fg = fs.get_or_create_feature_group(
-        name=FG_NAME,
-        version=FG_VERSION,
-        primary_key=["ts"],
-        event_time="ts",
-        description="Engineered hourly AQI features (lags/rolling + weather/time).",
-        online_enabled=False,
-    )
+        fg = fs.get_or_create_feature_group(
+            name=FG_NAME,
+            version=FG_VERSION,
+            primary_key=["ts"],
+            event_time="ts",
+            description="Engineered hourly AQI features (lags/rolling + weather/time).",
+            online_enabled=False,
+        )
 
-    fg.insert(df, write_options={"wait_for_job": True})
-    print(f"Inserted {len(df)} rows into Feature Group {FG_NAME} v{FG_VERSION}.")
+        fg.insert(df, write_options={"wait_for_job": True})
+        print(f"Inserted {len(df)} rows into Feature Group {FG_NAME} v{FG_VERSION}.")
+    finally:
+        # Be nice and close
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()
-
