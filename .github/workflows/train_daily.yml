@@ -78,7 +78,7 @@ jobs:
             echo "HAVE_HOPSWORKS=false" >> "$GITHUB_ENV"
           fi
 
-      # ---------- Hopsworks: push features (no hsml here) ----------
+      # ---------- Hopsworks: push features (exact pins, no heredoc) ----------
       - name: Switch to Python 3.10 for Hopsworks
         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         uses: actions/setup-python@v5
@@ -93,18 +93,21 @@ jobs:
         run: |
           set -e
           python -V
-          pip install --upgrade "pip<25"  # pip 25 sometimes over-constrains RCs
+          pip install --upgrade "pip<25"
           # Clean any leftovers from earlier steps
-          pip uninstall -y hopsworks hsfs hsml confluent-kafka protobuf || true
-          # Let resolver pick a matching hsfs/hsml for 3.10 with hopsworks 4.2.x
+          pip uninstall -y hopsworks hsfs hsml hopsworks-common confluent-kafka protobuf || true
+          # Known-good combo for backend 4.2.x + Python 3.10
           pip install \
-            "hopsworks>=4.2,<4.3" \
-            "hsfs[python]>=3.9,<3.10" \
-            "hsml>=3.9,<3.10" \
-            "protobuf>=4.25,<5" \
-            "confluent-kafka<3"
+            "protobuf>=4.25.4,<5" \
+            "hopsworks==4.2.9" \
+            "hsfs[python]==3.9.0rc7" \
+            "hsml==3.9.0rc0" \
+            "confluent-kafka<3" \
+            "pyhive" "thrift" "avro"
+          # Run your push script (uses hsfs API; does NOT import hopsworks)
           python src/push_features_hopsworks.py
 
+      # ---------- (Next step after push is green) ----------
       # - name: Register models to Hopsworks
       #   if: ${{ env.HAVE_HOPSWORKS == 'true' }}
       #   env:
@@ -112,7 +115,16 @@ jobs:
       #     HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
       #   run: |
       #     set -e
-      #     # keep same environment from previous step
+      #     python -V
+      #     pip install --upgrade "pip<25"
+      #     pip uninstall -y hopsworks hsfs hsml hopsworks-common confluent-kafka protobuf || true
+      #     pip install \
+      #       "protobuf>=4.25.4,<5" \
+      #       "hopsworks==4.2.9" \
+      #       "hsfs[python]==3.9.0rc7" \
+      #       "hsml==3.9.0rc0" \
+      #       "confluent-kafka<3" \
+      #       "pyhive" "thrift" "avro"
       #     python src/register_hopsworks.py
 
       - uses: actions/upload-artifact@v4

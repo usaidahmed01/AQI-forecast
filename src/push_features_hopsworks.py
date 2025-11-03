@@ -75,39 +75,41 @@ Env (GitHub Secrets -> env in workflow step):
   HOPSWORKS_API_KEY
 """
 
+# src/push_features_hopsworks.py
 import os
 import pandas as pd
-import hopsworks
 from zoneinfo import ZoneInfo
+from hsfs import connection
 
 FEATURES_PATH = "data/features/features.parquet"
 FG_NAME = "aqi_features_hourly"
-FG_VERSION = 1  # bump when schema changes
+FG_VERSION = 1
 
 def main():
-    # ---- load features ----
     if not os.path.exists(FEATURES_PATH) or os.path.getsize(FEATURES_PATH) == 0:
         raise FileNotFoundError(f"{FEATURES_PATH} missing or empty. Run features first.")
+
     df = pd.read_parquet(FEATURES_PATH)
+    df["ts"] = pd.to_datetime(df["ts"], utc=True)
+    if df["ts"].dt.tz is None:
+        df["ts"] = pd.to_datetime(df["ts"]).dt.tz_localize(ZoneInfo("Asia/Karachi")).dt.tz_convert("UTC")
 
-    # normalize time to UTC
-    df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
-    if df["ts"].dt.tz is None or str(df["ts"].dt.tz.iloc[0]) == "None":
-        # assume Asia/Karachi if naive then convert to UTC
-        df["ts"] = df["ts"].dt.tz_localize(ZoneInfo("Asia/Karachi")).dt.tz_convert("UTC")
-    else:
-        df["ts"] = df["ts"].dt.tz_convert("UTC")
-
-    # ---- login & get store ----
-    project_name = os.getenv("HOPSWORKS_PROJECT")
     api_key = os.getenv("HOPSWORKS_API_KEY")
-    if not project_name or not api_key:
-        raise RuntimeError("HOPSWORKS_PROJECT / HOPSWORKS_API_KEY not set in env.")
+    project = os.getenv("HOPSWORKS_PROJECT")
+    if not api_key or not project:
+        raise RuntimeError("HOPSWORKS_API_KEY/HOPSWORKS_PROJECT not set.")
 
-    project = hopsworks.login(project=project_name, api_key_value=api_key)
-    fs = project.get_feature_store()  # default FS for the project
+    conn = connection.connection(
+        api_key_value=api_key,
+        project=project,
+        hostname="c.app.hopsworks.ai",
+        port=443,
+        scheme="https",
+        engine="python",
+    )
+    conn.connect()
+    fs = conn.get_feature_store()
 
-    # ---- create/get feature group ----
     fg = fs.get_or_create_feature_group(
         name=FG_NAME,
         version=FG_VERSION,
@@ -117,7 +119,6 @@ def main():
         online_enabled=False,
     )
 
-    # ---- insert (synchronous) ----
     fg.insert(df, write_options={"wait_for_job": True})
     print(f"Inserted {len(df)} rows into Feature Group {FG_NAME} v{FG_VERSION}.")
 
