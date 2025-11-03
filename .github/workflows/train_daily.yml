@@ -1,3 +1,165 @@
+# name: train-daily
+
+# permissions:
+#   contents: write  # needed for the auto-commit step
+
+# on:
+#   schedule:
+#     - cron: "0 19 * * *"   # 19:00 UTC (== 00:00 PKT next day)
+#   workflow_dispatch:
+
+# jobs:
+#   train:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.11"
+
+#       - name: Install project deps
+#         run: pip install -r requirements.txt
+
+#       - name: Train (multi-horizon)
+#         run: python src/train.py
+
+#       # --- Sync winners into models/latest for Streamlit ---
+#       - name: Sync models/latest directory
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+
+#           echo "=== MODELS TREE (before sync) ==="
+#           ls -R models || true
+
+#           mkdir -p models/latest
+#           rm -f models/latest/* || true
+
+#           newest_joblib="$(find models -type f -name '*tplus*.joblib' -printf '%T@ %p\n' | sort -n | tail -n1 | cut -d' ' -f2- || true)"
+#           if [ -n "${newest_joblib}" ]; then
+#             src_dir="$(dirname "${newest_joblib}")"
+#           else
+#             src_dir="models"
+#           fi
+
+#           echo "Using source directory: ${src_dir}"
+
+#           find "${src_dir}" -maxdepth 1 -name '*tplus24.joblib' -exec cp -t models/latest {} + || true
+#           find "${src_dir}" -maxdepth 1 -name '*tplus48.joblib' -exec cp -t models/latest {} + || true
+#           find "${src_dir}" -maxdepth 1 -name '*tplus72.joblib' -exec cp -t models/latest {} + || true
+
+#           if [ -f "${src_dir}/features.json" ]; then
+#             cp "${src_dir}/features.json" models/latest/
+#           elif [ -f "models/features.json" ]; then
+#             cp "models/features.json" models/latest/
+#           fi
+
+#           if [ -f "${src_dir}/report.json" ]; then
+#             cp "${src_dir}/report.json" models/latest/
+#           elif [ -f "models/report.json" ]; then
+#             cp "models/report.json" models/latest/
+#           fi
+
+#           echo "=== models/latest content ==="
+#           ls -l models/latest || true
+
+#       - name: Commit models/latest back to repo
+#         uses: stefanzweifel/git-auto-commit-action@v5
+#         with:
+#           commit_message: "chore(models): refresh models/latest from train-daily"
+
+#       - name: Set Hopsworks presence flag
+#         shell: bash
+#         run: |
+#           if [ -n "${{ secrets.HOPSWORKS_PROJECT }}" ] && [ -n "${{ secrets.HOPSWORKS_API_KEY }}" ]; then
+#             echo "HAVE_HOPSWORKS=true" >> "$GITHUB_ENV"
+#           else
+#             echo "HAVE_HOPSWORKS=false" >> "$GITHUB_ENV"
+#           fi
+
+#       # ---------- Hopsworks: push features (exact pins, no heredoc) ----------
+#       - name: Switch to Python 3.10 for Hopsworks
+#         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.10"
+
+#       - name: Push features to Hopsworks (HSFS-only)
+#         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
+#         env:
+#           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+#           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+#         run: |
+#           set -e
+#           python -V
+#           pip install --upgrade "pip<25"
+#           # Clean leftovers
+#           pip uninstall -y hopsworks hsml hsfs hopsworks-common confluent-kafka protobuf || true
+#           # Install HSFS (python engine) + deps; NO hopsworks, NO hsml here
+#           pip install \
+#             "hsfs[python]==3.9.0rc7" \
+#             "protobuf>=4.25.4,<5" \
+#             "confluent-kafka<3" \
+#             "pyhive" "thrift" "avro"
+#           python src/push_features_hopsworks.py
+
+#       # ---------- (Next step after push is green) ----------
+#       # - name: Register models to Hopsworks
+#       #   if: ${{ env.HAVE_HOPSWORKS == 'true' }}
+#       #   env:
+#       #     HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+#       #     HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+#       #   run: |
+#       #     set -e
+#       #     python -V
+#       #     pip install --upgrade "pip<25"
+#       #     pip uninstall -y hopsworks hsfs hsml hopsworks-common confluent-kafka protobuf || true
+#       #     pip install \
+#       #       "protobuf>=4.25.4,<5" \
+#       #       "hopsworks==4.2.9" \
+#       #       "hsfs[python]==3.9.0rc7" \
+#       #       "hsml==3.9.0rc0" \
+#       #       "confluent-kafka<3" \
+#       #       "pyhive" "thrift" "avro"
+#       #     python src/register_hopsworks.py
+
+#       - uses: actions/upload-artifact@v4
+#         with:
+#           name: models
+#           path: models/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 name: train-daily
 
 permissions:
@@ -69,6 +231,7 @@ jobs:
         with:
           commit_message: "chore(models): refresh models/latest from train-daily"
 
+      # Flag whether Hopsworks secrets exist
       - name: Set Hopsworks presence flag
         shell: bash
         run: |
@@ -78,7 +241,7 @@ jobs:
             echo "HAVE_HOPSWORKS=false" >> "$GITHUB_ENV"
           fi
 
-      # ---------- Hopsworks: push features (exact pins, no heredoc) ----------
+      # ---------- Hopsworks: push features (HSFS python engine) ----------
       - name: Switch to Python 3.10 for Hopsworks
         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         uses: actions/setup-python@v5
@@ -101,28 +264,28 @@ jobs:
             "hsfs[python]==3.9.0rc7" \
             "protobuf>=4.25.4,<5" \
             "confluent-kafka<3" \
-            "pyhive" "thrift" "avro"
+            pyhive thrift avro
           python src/push_features_hopsworks.py
 
-      # ---------- (Next step after push is green) ----------
-      # - name: Register models to Hopsworks
-      #   if: ${{ env.HAVE_HOPSWORKS == 'true' }}
-      #   env:
-      #     HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
-      #     HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
-      #   run: |
-      #     set -e
-      #     python -V
-      #     pip install --upgrade "pip<25"
-      #     pip uninstall -y hopsworks hsfs hsml hopsworks-common confluent-kafka protobuf || true
-      #     pip install \
-      #       "protobuf>=4.25.4,<5" \
-      #       "hopsworks==4.2.9" \
-      #       "hsfs[python]==3.9.0rc7" \
-      #       "hsml==3.9.0rc0" \
-      #       "confluent-kafka<3" \
-      #       "pyhive" "thrift" "avro"
-      #     python src/register_hopsworks.py
+      # ---------- Hopsworks: Model Registry (let hopsworks pin hsml) ----------
+      - name: Register models to Hopsworks
+        if: ${{ env.HAVE_HOPSWORKS == 'true' }}
+        env:
+          HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          set -e
+          python -V
+          pip install --upgrade "pip<25"
+          # Fresh, compatible stack for registry
+          pip uninstall -y hopsworks hsml hsfs hopsworks-common confluent-kafka protobuf || true
+          pip install \
+            "protobuf>=4.25.4,<5" \
+            "hopsworks<4.3,>=4.2" \
+            "hsfs[python]==3.9.0rc7" \
+            "confluent-kafka<3" \
+            pyhive thrift avro
+          python src/register_hopsworks.py
 
       - uses: actions/upload-artifact@v4
         with:
