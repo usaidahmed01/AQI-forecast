@@ -75,11 +75,13 @@ Env (GitHub Secrets -> env in workflow step):
   HOPSWORKS_API_KEY
 """
 
-# src/push_features_hopsworks.py
 import os
 import pandas as pd
 from zoneinfo import ZoneInfo
-from hsfs import connection
+
+import hsfs
+from hsfs import connection as hsfs_connection
+
 
 FEATURES_PATH = "data/features/features.parquet"
 FG_NAME = "aqi_features_hourly"
@@ -99,15 +101,13 @@ def main():
     if not api_key or not project:
         raise RuntimeError("HOPSWORKS_API_KEY/HOPSWORKS_PROJECT not set.")
 
-    conn = connection.connection(
-        api_key_value=api_key,
-        project=project,
-        hostname="c.app.hopsworks.ai",
+    conn = hsfs_connection.connection(
+        host="c.app.hopsworks.ai",
         port=443,
-        scheme="https",
+        project=os.getenv("HOPSWORKS_PROJECT"),
+        api_key_value=os.getenv("HOPSWORKS_API_KEY"),
         engine="python",
     )
-    conn.connect()
     fs = conn.get_feature_store()
 
     fg = fs.get_or_create_feature_group(

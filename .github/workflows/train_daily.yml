@@ -85,7 +85,7 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Push features to Hopsworks
+      - name: Push features to Hopsworks (HSFS-only)
         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         env:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
@@ -94,17 +94,14 @@ jobs:
           set -e
           python -V
           pip install --upgrade "pip<25"
-          # Clean any leftovers from earlier steps
-          pip uninstall -y hopsworks hsfs hsml hopsworks-common confluent-kafka protobuf || true
-          # Known-good combo for backend 4.2.x + Python 3.10
+          # Clean leftovers
+          pip uninstall -y hopsworks hsml hsfs hopsworks-common confluent-kafka protobuf || true
+          # Install HSFS (python engine) + deps; NO hopsworks, NO hsml here
           pip install \
-            "protobuf>=4.25.4,<5" \
-            "hopsworks==4.2.9" \
             "hsfs[python]==3.9.0rc7" \
-            "hsml==3.9.0rc0" \
+            "protobuf>=4.25.4,<5" \
             "confluent-kafka<3" \
             "pyhive" "thrift" "avro"
-          # Run your push script (uses hsfs API; does NOT import hopsworks)
           python src/push_features_hopsworks.py
 
       # ---------- (Next step after push is green) ----------
