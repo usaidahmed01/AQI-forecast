@@ -13,10 +13,17 @@
 #     runs-on: ubuntu-latest
 #     steps:
 #       - uses: actions/checkout@v4
+
 #       - uses: actions/setup-python@v5
 #         with:
 #           python-version: "3.11"
-#       - run: pip install -r requirements.txt
+
+#       - name: Upgrade pip/setuptools/wheel (prevents legacy builds)
+#         run: |
+#           python -m pip install --upgrade pip setuptools wheel
+
+#       - name: Install deps
+#         run: pip install -r requirements.txt
 
 #       - name: Set env vars
 #         run: |
@@ -44,6 +51,19 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 name: features-hourly
 
 permissions:
@@ -51,35 +71,46 @@ permissions:
 
 on:
   schedule:
-    - cron: "0 * * * *"  # hourly
-  workflow_dispatch:
+    - cron: "0 * * * *"   # run every hour
+  workflow_dispatch:       # allow manual run
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    steps:
+      # 1) get repo
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 2) Python setup
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Upgrade pip/setuptools/wheel (prevents legacy builds)
+      # 3) install project deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
 
-      - name: Install deps
-        run: pip install -r requirements.txt
-
-      - name: Set env vars
+      # 4) env needed by ingest.py
+      - name: Set environment vars
         run: |
           echo "OPENAQ_API_KEY=${{ secrets.OPENAQ_API_KEY }}" >> $GITHUB_ENV
           echo "CITY=Karachi" >> $GITHUB_ENV
           echo "LOOKBACK_DAYS=7" >> $GITHUB_ENV
 
-      - run: python src/ingest.py
-      - run: python src/features.py
+      # 5) run pipeline
+      - name: Ingest latest data
+        run: python src/ingest.py
 
-      - uses: stefanzweifel/git-auto-commit-action@v5
+      - name: Build features
+        run: python src/features.py
+
+      # 6) commit updated data/features/... if something changed
+      - name: Commit updated features
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update features"
