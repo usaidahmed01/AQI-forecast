@@ -1,24 +1,18 @@
-# Core
 pandas
 numpy
 requests
 python-dotenv
 
-# Storage / parquet
 pyarrow
 duckdb
-# Optional alternate parquet engine (commented by default)
-# fastparquet==2024.5.0
 
-# ML
 scikit-learn
 joblib
 
-# UI (optional for later steps)
 streamlit
 gradio
 scipy
 matplotlib
 shap
-
+numba
 
