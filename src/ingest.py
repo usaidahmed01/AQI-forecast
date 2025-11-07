@@ -2,20 +2,15 @@
 Purpose:
   1) Get a city's lat/lon and timezone (Open-Meteo Geocoding)
   2) Download hourly weather for a date range (Open-Meteo Forecast)
-  3) Download hourly PM2.5 (OpenAQ v3); if none, fallback to Open-Meteo Air Quality
+  3) Download hourly PM2.5 (OpenAQ v3); fallback to Open-Meteo Air Quality
   4) Merge weather + PM2.5 on hourly timestamps
   5) Save raw snapshots to data/raw/
 
 Outputs:
-  - data/raw/pm25_<City>.parquet
-  - data/raw/weather_<City>.parquet
+  - data/raw/pm25_Karachi.parquet
+  - data/raw/weather_Karachi.parquet
   - data/raw/merged_latest.parquet
 
-Before running (Windows PowerShell):
-  $env:OPENAQ_API_KEY="YOUR_OPENAQ_KEY"
-  $env:CITY="Karachi"
-  $env:LOOKBACK_DAYS="7"
-  python src/ingest.py
 """
 
 import os
@@ -29,7 +24,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ------------------------------- CONSTANTS ----------------------------------
+# CONSTANTS
 
 OPENAQ_BASE = "https://api.openaq.org/v3"
 
@@ -40,36 +35,30 @@ WEATHER_VARS = [
     "surface_pressure",
 ]
 
-MAX_RADIUS_M = 25_000  # OpenAQ limit
+MAX_RADIUS_M = 25_000
 
-SESSION = requests.Session()  # reuse HTTP connection
+SESSION = requests.Session()
 
 
-# ----------------------------- SMALL UTILITIES -------------------------------
+# SMALL UTILITIES
 
-def _openaq_headers() -> Dict[str, str]:
-    """
-    Build headers with the OpenAQ API key from env.
-    """
+def _openaq_headers():
+    
     api_key = os.getenv("OPENAQ_API_KEY")
     if not api_key:
         raise RuntimeError("Please set OPENAQ_API_KEY before running.")
     return {"X-API-Key": api_key}
 
 
-def _iso_utc(dt: datetime) -> str:
-    """
-    Return UTC ISO8601 string ending with 'Z', e.g. 2025-10-05T12:00:00Z.
-    """
+def _iso_utc(dt: datetime):
+    
     return dt.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 # --------------------------- GEOCODING + WEATHER -----------------------------
 
-def geocode_city(city: str) -> Tuple[float, float, str]:
-    """
-    Convert a city name to (lat, lon, timezone) via Open-Meteo geocoding.
-    """
+def geocode_city(city: str):
+    
     url = "https://geocoding-api.open-meteo.com/v1/search"
     params = {"name": city, "count": 1}
 
@@ -87,11 +76,8 @@ def geocode_city(city: str) -> Tuple[float, float, str]:
     return latitude, longitude, timezone_name
 
 
-def fetch_weather(lat: float, lon: float, start: datetime, end: datetime, tz: str) -> pd.DataFrame:
-    """
-    Download hourly weather (Open-Meteo) between start/end (inclusive).
-    Returns columns: ts, temperature_2m, relative_humidity_2m, wind_speed_10m, surface_pressure
-    """
+def fetch_weather(lat: float, lon: float, start: datetime, end: datetime, tz: str):
+    
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,
@@ -116,11 +102,8 @@ def fetch_weather(lat: float, lon: float, start: datetime, end: datetime, tz: st
 
 # ------------------------------- OPENAQ v3 -----------------------------------
 
-def find_pm25_location_ids(lat: float, lon: float, radius_m: int = MAX_RADIUS_M, limit: int = 1000) -> List[int]:
-    """
-    Find OpenAQ location IDs near (lat, lon) with PM2.5 sensors.
-    OpenAQ expects "longitude,latitude". If 422, try reversed once.
-    """
+def find_pm25_location_ids(lat: float, lon: float, radius_m: int = MAX_RADIUS_M, limit: int = 1000):
+
     url = f"{OPENAQ_BASE}/locations"
     params = {
         "coordinates": f"{lon},{lat}",
@@ -143,10 +126,8 @@ def find_pm25_location_ids(lat: float, lon: float, radius_m: int = MAX_RADIUS_M,
     return ids
 
 
-def get_pm25_sensor_ids_for_location(location_id: int) -> List[int]:
-    """
-    From a location, list sensors and keep those measuring PM2.5.
-    """
+def get_pm25_sensor_ids_for_location(location_id: int):
+
     url = f"{OPENAQ_BASE}/locations/{location_id}/sensors"
 
     r = SESSION.get(url, headers=_openaq_headers(), timeout=30)
@@ -166,15 +147,8 @@ def get_pm25_sensor_ids_for_location(location_id: int) -> List[int]:
     return pm25_ids
 
 
-def fetch_openaq_pm25_v3(lat: float, lon: float, start_iso: str, end_iso: str) -> pd.DataFrame:
-    """
-    Fetch hourly PM2.5 from OpenAQ v3:
-      1) Find nearby PM2.5 locations
-      2) Get PM2.5 sensor IDs
-      3) Pull hourly readings per sensor
-      4) Average per hour
-    Returns: DataFrame ['ts', 'pm25']
-    """
+def fetch_openaq_pm25_v3(lat: float, lon: float, start_iso: str, end_iso: str):
+
     location_ids = find_pm25_location_ids(lat, lon, radius_m=25_000)
     if not location_ids:
         print("No PM2.5 locations found near this city.")
@@ -189,7 +163,7 @@ def fetch_openaq_pm25_v3(lat: float, lon: float, start_iso: str, end_iso: str) -
         except requests.HTTPError:
             continue
 
-    sensor_ids = list(dict.fromkeys(sensor_ids))  # dedupe
+    sensor_ids = list(dict.fromkeys(sensor_ids))
     if not sensor_ids:
         print("No PM2.5 sensors found in those locations.")
         return pd.DataFrame(columns=["ts", "pm25"])
@@ -230,12 +204,10 @@ def fetch_openaq_pm25_v3(lat: float, lon: float, start_iso: str, end_iso: str) -
     return hourly_avg
 
 
-# --------------------------- OPEN-METEO FALLBACK -----------------------------
+# OPEN-METEO FALLBACK 
 
-def fetch_openmeteo_pm25(lat: float, lon: float, start_dt: datetime, end_dt: datetime) -> pd.DataFrame:
-    """
-    Fallback: Open-Meteo Air Quality hourly PM2.5 in UTC.
-    """
+def fetch_openmeteo_pm25(lat: float, lon: float, start_dt: datetime, end_dt: datetime):
+
     url = "https://air-quality-api.open-meteo.com/v1/air-quality"
     params = {
         "latitude": lat,
@@ -261,18 +233,8 @@ def fetch_openmeteo_pm25(lat: float, lon: float, start_dt: datetime, end_dt: dat
     return df.sort_values("ts")
 
 
-# ------------------------------- MAIN FLOW -----------------------------------
+def ingest(city: str = "Karachi", lookback_days: int = 30):
 
-def ingest(city: str = "Karachi", lookback_days: int = 30) -> pd.DataFrame:
-    """
-    Orchestrate ingestion:
-      - compute date window
-      - geocode city
-      - fetch weather + PM2.5
-      - merge on nearest hour (<= 30 min tolerance)
-      - save raw snapshots
-      - return merged DataFrame
-    """
     now_utc = datetime.now(timezone.utc)
     start_utc = now_utc - timedelta(days=lookback_days)
 

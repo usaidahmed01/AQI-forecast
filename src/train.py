@@ -36,7 +36,7 @@ from sklearn.ensemble import RandomForestRegressor
 from zoneinfo import ZoneInfo
 
 
-# ----------------------------- CONFIG ---------------------------------
+# NAMES
 
 FEATURES_PATH = "data/features/features.parquet"
 MODELS_DIR = "models"
@@ -68,18 +68,13 @@ FEATURE_NAMES: List[str] = [
 TARGET = "pm25_tplus_24"
 
 
-# --------------------------- DATA LOADING -----------------------------
+# DATA LOADING
 
 def load_features(
     path: str = FEATURES_PATH,
     target_col: str = TARGET,
-) -> Tuple[np.ndarray, np.ndarray, List[str]]:
-    """
-    Read the engineered features and return:
-      X: features as array
-      y: target as array
-      features: feature order
-    """
+):
+
     if (not os.path.exists(path)) or os.path.getsize(path) == 0:
         raise FileNotFoundError(f"{path} missing or empty. Run ingest + features first.")
 
@@ -99,25 +94,18 @@ def load_features(
     return X, y, FEATURE_NAMES
 
 
-# --------------------------- TRAINING CORE ----------------------------
+# TRAINING
 
 def _train_for_target(
     target_col: str,
-) -> Tuple[str, Dict[str, Dict[str, float]], object]:
-    """
-    Train 2 models for one target and pick the best.
+):
 
-    Returns:
-      best_name: name of the best model
-      metrics:   metrics for both models
-      best_model: fitted model object
-    """
     X, y, _ = load_features(FEATURES_PATH, target_col=target_col)
 
     if len(X) < 200:
         print(f"WARNING: only {len(X)} rows for {target_col}; results may be noisy.")
 
-    # simple time-aware split (no shuffle)
+    # simple (no shuffle)
     Xtr, Xte, ytr, yte = train_test_split(
         X,
         y,
@@ -162,16 +150,11 @@ def _train_for_target(
     return best_name, metrics, best_model
 
 
-# --------------------------- MAIN ORCHESTRATION -----------------------
+# MAIN 
 
-def train_and_eval() -> Tuple[dict, str]:
-    """
-    Train for 3 horizons, save versioned models, copy to models/latest.
+def train_and_eval():
 
-    Returns:
-      (report_dict, "ok")
-    """
-    # version folder based on Asia/Karachi time
+    # version
     version = datetime.now(ZoneInfo("Asia/Karachi")).strftime("%Y-%m-%d_%H%M")
     outdir = os.path.join(MODELS_DIR, version)
     os.makedirs(outdir, exist_ok=True)
@@ -217,7 +200,6 @@ def train_and_eval() -> Tuple[dict, str]:
     return overall_report, "ok"
 
 
-# --------------------------- CLI ENTRY --------------------------------
 
 report, winner = train_and_eval()
 print("Report:", json.dumps(report, indent=2), "Best:", winner)

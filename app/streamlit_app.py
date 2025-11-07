@@ -9,22 +9,22 @@ import os
 import json
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-
 import requests
 import joblib
 import pandas as pd
 import numpy as np
 import streamlit as st
 
-# --------------------- BASIC CONFIG ---------------------
+# CONFIG
+
 CITY = os.getenv("CITY", "Karachi")
 MODELS_DIR = "models/latest"
 PKT = ZoneInfo("Asia/Karachi")
 UTC = timezone.utc
 
 
-# --------------------- CATEGORY HELPERS -----------------
-def pm25_category(value: float) -> str:
+# CATEGORY
+def pm25_category(value: float):
     if value <= 12.0:
         return "Good"
     if value <= 35.4:
@@ -38,7 +38,7 @@ def pm25_category(value: float) -> str:
     return "Hazardous"
 
 
-def category_badge(cat: str) -> str:
+def category_badge(cat: str):
     colors = {
         "Good": "#22c55e",
         "Moderate": "#eab308",
@@ -55,7 +55,7 @@ def category_badge(cat: str) -> str:
     )
 
 
-# --------------------- CACHED LOADERS -------------------
+# LOADERS
 @st.cache_data
 def load_meta():
     with open(os.path.join(MODELS_DIR, "features.json")) as f:
@@ -88,7 +88,7 @@ def load_recent_pm25(city: str):
     return df.sort_values("ts")
 
 
-# --------------------- REMOTE DATA HELPERS ---------------
+# DATA HELPERS
 def geocode(city: str):
     url = "https://geocoding-api.open-meteo.com/v1/search"
     r = requests.get(url, params={"name": city, "count": 1}, timeout=20)
@@ -98,7 +98,7 @@ def geocode(city: str):
     return first["latitude"], first["longitude"]
 
 
-def fetch_forecast_weather(lat: float, lon: float) -> pd.DataFrame:
+def fetch_forecast_weather(lat: float, lon: float):
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,
@@ -118,7 +118,7 @@ def fetch_forecast_weather(lat: float, lon: float) -> pd.DataFrame:
     return df
 
 
-# --------------------- FEATURE BUILDER -------------------
+# FEATURE
 def build_current_feature_row(feature_names, pm25_hist: pd.DataFrame, weather_row: pd.Series):
     pm25_hist = pm25_hist.sort_values("ts").copy()
     if len(pm25_hist) < 24:
@@ -159,7 +159,7 @@ def build_current_feature_row(feature_names, pm25_hist: pd.DataFrame, weather_ro
     return X, ts_utc
 
 
-# --------------------- OPTIONAL SHAP ---------------------
+# SHAP
 def try_shap(model, feature_names, X_row):
     try:
         import shap
@@ -178,7 +178,7 @@ def try_shap(model, feature_names, X_row):
         return None, None
 
 
-# ======================= STREAMLIT UI =====================
+# STREAMLIT UI
 st.set_page_config(page_title="AQI Forecast", page_icon="🌫️", layout="wide")
 st.title("🌫️ AQI Forecast — 24h / 48h / 72h")
 st.caption(f"City: **{CITY}** — times shown in **Asia/Karachi (PKT)**")

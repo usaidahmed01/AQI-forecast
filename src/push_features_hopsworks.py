@@ -14,10 +14,10 @@ from hsfs import connection as hsfs_connection
 
 FEATURES_PATH = "data/features/features.parquet"
 FG_NAME = "aqi_features_hourly"
-FG_VERSION = 1  # bump when schema changes
+FG_VERSION = 1  
 
 
-def main() -> None:
+def main():
     # 1) basic file check
     if (not os.path.exists(FEATURES_PATH)) or os.path.getsize(FEATURES_PATH) == 0:
         raise FileNotFoundError(f"{FEATURES_PATH} missing or empty. Run features first.")
@@ -65,12 +65,11 @@ def main() -> None:
         fg.insert(df, write_options={"wait_for_job": True})
         print(f"Inserted {len(df)} rows into Feature Group {FG_NAME} v{FG_VERSION}.")
     finally:
-        # close connection to be clean in CI
         try:
             conn.close()
         except Exception:
             pass
 
 
-if __name__ == "__main__":
-    main()
+
+main()

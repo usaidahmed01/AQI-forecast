@@ -6,7 +6,7 @@ permissions:
 on:
   schedule:
     - cron: "0 * * * *"   # run every hour
-  workflow_dispatch:       # allow manual run
+  workflow_dispatch:       # manual run
 
 jobs:
   build:
@@ -43,7 +43,7 @@ jobs:
       - name: Build features
         run: python src/features.py
 
-      # 6) commit updated data/features/... if something changed
+      # 6) commit updated data/features/ if something changed
       - name: Commit updated features
         uses: stefanzweifel/git-auto-commit-action@v5
         with:

@@ -12,21 +12,15 @@ Output:
 
 import os
 import pandas as pd
-import numpy as np  # kept since you imported it; fine to keep
+import numpy as np
 
-# central names
+# names
 TIME_COL = "ts"     # UTC timestamp
-TARGET_COL = "pm25" # value we want to forecast
+TARGET_COL = "pm25" # for forecast
 
 
-def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add basic time columns:
-      - hour of day
-      - day of week
-      - day of month
-      - month
-    """
+def add_time_features(df: pd.DataFrame):
+
     df = df.copy()
     df[TIME_COL] = pd.to_datetime(df[TIME_COL], utc=True)
 
@@ -39,7 +33,7 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_lag_rolling_change(df: pd.DataFrame) -> pd.DataFrame:
+def add_lag_rolling_change(df: pd.DataFrame):
     """
     Add PM2.5 history columns:
       - pm25_lag1   (1 hour ago)
@@ -60,14 +54,8 @@ def add_lag_rolling_change(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_future_targets(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add future labels we want to predict:
-      - pm25_tplus_24
-      - pm25_tplus_48
-      - pm25_tplus_72
-    Shift is negative because we want "future" values on the current row.
-    """
+def add_future_targets(df: pd.DataFrame):
+
     df = df.copy()
 
     for h in [24, 48, 72]:
@@ -78,11 +66,8 @@ def add_future_targets(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def drop_incomplete_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Drop rows that have any NaN in features/targets.
-    This happens near the edges (start of lags, end of future shifts).
-    """
+def drop_incomplete_rows(df: pd.DataFrame):
+
     cleaned = df.dropna().reset_index(drop=True)
     print("Clean Data\n", cleaned.head())
     return cleaned
@@ -91,17 +76,8 @@ def drop_incomplete_rows(df: pd.DataFrame) -> pd.DataFrame:
 def build_features(
     in_path: str = "data/raw/merged_latest.parquet",
     out_path: str = "data/features/features.parquet",
-) -> pd.DataFrame:
-    """
-    Full feature pipeline:
-      1) read merged parquet
-      2) sort by time
-      3) add time features
-      4) add lag/rolling/change
-      5) add future targets
-      6) drop NaNs
-      7) save to parquet
-    """
+):
+    
     if (not os.path.exists(in_path)) or os.path.getsize(in_path) == 0:
         raise FileNotFoundError(f"{in_path} is missing or empty. Run ingest first.")
 

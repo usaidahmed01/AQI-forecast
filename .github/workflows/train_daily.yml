@@ -5,7 +5,7 @@ permissions:
 
 on:
   schedule:
-    - cron: "0 19 * * *"   # every day at 19:00 UTC (00:00 PKT)
+    - cron: "0 19 * * *"
   workflow_dispatch:
 
 jobs:
@@ -17,7 +17,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2) main Python (project uses 3.11)
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
