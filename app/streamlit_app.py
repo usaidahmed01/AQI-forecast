@@ -7,8 +7,9 @@ Run:
 
 import os
 import json
-from datetime import datetime, timezone
+from datetime import timezone
 from zoneinfo import ZoneInfo
+
 import requests
 import joblib
 import pandas as pd
@@ -16,7 +17,6 @@ import numpy as np
 import streamlit as st
 
 # CONFIG
-
 CITY = os.getenv("CITY", "Karachi")
 MODELS_DIR = "models/latest"
 PKT = ZoneInfo("Asia/Karachi")
@@ -55,7 +55,7 @@ def category_badge(cat: str):
     )
 
 
-# LOADERS
+# CACHED LOADERS
 @st.cache_data
 def load_meta():
     with open(os.path.join(MODELS_DIR, "features.json")) as f:
@@ -90,6 +90,7 @@ def load_recent_pm25(city: str):
 
 # DATA HELPERS
 def geocode(city: str):
+
     url = "https://geocoding-api.open-meteo.com/v1/search"
     r = requests.get(url, params={"name": city, "count": 1}, timeout=20)
     r.raise_for_status()
@@ -99,6 +100,7 @@ def geocode(city: str):
 
 
 def fetch_forecast_weather(lat: float, lon: float):
+    
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,
@@ -118,12 +120,14 @@ def fetch_forecast_weather(lat: float, lon: float):
     return df
 
 
-# FEATURE
+# FEATURE BUILDER
 def build_current_feature_row(feature_names, pm25_hist: pd.DataFrame, weather_row: pd.Series):
+    # we need at least 24h of PM2.5 to compute lag24, ma24
     pm25_hist = pm25_hist.sort_values("ts").copy()
     if len(pm25_hist) < 24:
         raise ValueError("Need at least 24 hourly PM2.5 rows to build features.")
 
+    # features
     pm25_hist["pm25_lag1"] = pm25_hist["pm25"].shift(1)
     pm25_hist["pm25_lag24"] = pm25_hist["pm25"].shift(24)
     pm25_hist["pm25_ma6"] = pm25_hist["pm25"].rolling(6).mean()
@@ -155,6 +159,7 @@ def build_current_feature_row(feature_names, pm25_hist: pd.DataFrame, weather_ro
         "month": month,
     }
 
+    # order features
     X = np.array([[row_dict[c] for c in feature_names]], dtype=float)
     return X, ts_utc
 
@@ -164,11 +169,13 @@ def try_shap(model, feature_names, X_row):
     try:
         import shap
 
+        # tree models
         if hasattr(model, "estimators_"):
             explainer = shap.TreeExplainer(model)
             values = explainer.shap_values(X_row)
             values = values[0] if isinstance(values, list) else values
         else:
+            # linear model (Ridge)
             background = np.zeros((10, len(feature_names)))
             explainer = shap.LinearExplainer(model, background)
             values = explainer.shap_values(X_row)
@@ -183,7 +190,7 @@ st.set_page_config(page_title="AQI Forecast", page_icon="🌫️", layout="wide"
 st.title("🌫️ AQI Forecast — 24h / 48h / 72h")
 st.caption(f"City: **{CITY}** — times shown in **Asia/Karachi (PKT)**")
 
-# load model assets
+# 1) load metadata + models
 feature_names, report = load_meta()
 models = load_models()
 
@@ -191,7 +198,16 @@ if not models:
     st.error("No models found in models/latest/. Run training first.")
     st.stop()
 
-# load inputs (data + weather)
+# Winners
+winners = report.get("horizons", {})
+st.markdown("**Trained model winners (latest run):**")
+st.write({
+    "+24h": winners.get("h24", {}).get("best_model", "n/a"),
+    "+48h": winners.get("h48", {}).get("best_model", "n/a"),
+    "+72h": winners.get("h72", {}).get("best_model", "n/a"),
+})
+
+# 2) load weather + pm25
 lat, lon = geocode(CITY)
 forecast_df = fetch_forecast_weather(lat, lon)
 pm25_hist = load_recent_pm25(CITY)
@@ -200,14 +216,14 @@ if pm25_hist.empty:
     st.warning(f"No PM2.5 history found at data/raw/pm25_{CITY}.parquet. Run ingest first.")
     st.stop()
 
-# use the first forecast hour as the "current" reference
+# 3) make current feature row
 current_weather = forecast_df.iloc[0]
 X_row, ts_utc = build_current_feature_row(feature_names, pm25_hist, current_weather)
 
 ts_pkt = ts_utc.astimezone(PKT).strftime("%Y-%m-%d %H:%M")
 st.caption(f"Prediction reference time: **{ts_pkt} PKT**")
 
-# 3 columns for 24/48/72
+# 4) show forecasts
 cols = st.columns(3)
 for i, h in enumerate([24, 48, 72]):
     model = models.get(h)
@@ -221,7 +237,7 @@ for i, h in enumerate([24, 48, 72]):
     cols[i].metric(label=f"PM2.5 forecast (+{h}h)", value=f"{pred:.1f} µg/m³")
     cols[i].markdown(category_badge(cat), unsafe_allow_html=True)
 
-# -------- SHAP (select horizon) --------
+# 5) SHAP: let user pick which horizon to explain
 horizon_to_explain = st.selectbox(
     "Explain which forecast?",
     options=[24, 48, 72],
@@ -238,14 +254,16 @@ if model_to_explain:
             pd.DataFrame({"feature": labels, "influence": values})
             .sort_values("influence", ascending=False)
         )
-        st.dataframe(expl_df, use_container_width=True)
+        st.dataframe(expl_df, width="stretch")
         st.bar_chart(expl_df.set_index("feature"))
     else:
         st.info("SHAP could not be computed for this model.")
+else:
+    st.info("No model found for that horizon.")
 
-# debug boxes
+# 6) debug
 with st.expander("Recent PM2.5 (UTC)"):
-    st.dataframe(pm25_hist.tail(10), use_container_width=True)
+    st.dataframe(pm25_hist.tail(10), width="stretch")
 
-with st.expander("Training report"):
+with st.expander("Training report (JSON)"):
     st.json(report)

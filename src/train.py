@@ -2,7 +2,7 @@
 Purpose:
   - Train models to forecast PM2.5 at 3 future horizons:
       +24 hours, +48 hours, +72 hours
-  - For each horizon, try 2 models (Ridge, RandomForest) and pick the best
+  - For each horizon, try 3 models (Ridge, RandomForest, GradientBoosting) and pick the best
   - Save the best model per horizon with versioning and a report
 
 Outputs:
@@ -24,19 +24,18 @@ import glob
 import shutil
 from datetime import datetime
 from math import sqrt
-from typing import List, Tuple, Dict
+from typing import List, Dict
 
 import joblib
 import numpy as np
 import pandas as pd
+
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.linear_model import Ridge
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from zoneinfo import ZoneInfo
 
-
-# NAMES
 
 FEATURES_PATH = "data/features/features.parquet"
 MODELS_DIR = "models"
@@ -68,13 +67,10 @@ FEATURE_NAMES: List[str] = [
 TARGET = "pm25_tplus_24"
 
 
-# DATA LOADING
-
 def load_features(
     path: str = FEATURES_PATH,
     target_col: str = TARGET,
 ):
-
     if (not os.path.exists(path)) or os.path.getsize(path) == 0:
         raise FileNotFoundError(f"{path} missing or empty. Run ingest + features first.")
 
@@ -94,18 +90,13 @@ def load_features(
     return X, y, FEATURE_NAMES
 
 
-# TRAINING
-
-def _train_for_target(
-    target_col: str,
-):
-
+def _train_for_target(target_col: str):
     X, y, _ = load_features(FEATURES_PATH, target_col=target_col)
 
     if len(X) < 200:
         print(f"WARNING: only {len(X)} rows for {target_col}; results may be noisy.")
 
-    # simple (no shuffle)
+    # time-series-ish split (no shuffle)
     Xtr, Xte, ytr, yte = train_test_split(
         X,
         y,
@@ -114,12 +105,16 @@ def _train_for_target(
         shuffle=False,
     )
 
+    # 3 CANDIDATES
     candidates = {
         "ridge": Ridge(alpha=1.0),
         "rf": RandomForestRegressor(
             n_estimators=300,
             random_state=RANDOM_STATE,
             n_jobs=-1,
+        ),
+        "gbr": GradientBoostingRegressor(
+            random_state=RANDOM_STATE,
         ),
     }
 
@@ -150,11 +145,8 @@ def _train_for_target(
     return best_name, metrics, best_model
 
 
-# MAIN 
-
 def train_and_eval():
-
-    # version
+    # version based on PKT
     version = datetime.now(ZoneInfo("Asia/Karachi")).strftime("%Y-%m-%d_%H%M")
     outdir = os.path.join(MODELS_DIR, version)
     os.makedirs(outdir, exist_ok=True)
@@ -190,7 +182,6 @@ def train_and_eval():
     # copy to `models/latest`
     latest_dir = os.path.join(MODELS_DIR, "latest")
     os.makedirs(latest_dir, exist_ok=True)
-
     for p in glob.glob(os.path.join(outdir, "*")):
         shutil.copy(p, latest_dir)
 
@@ -198,7 +189,6 @@ def train_and_eval():
     print(json.dumps(overall_report, indent=2))
 
     return overall_report, "ok"
-
 
 
 report, winner = train_and_eval()
