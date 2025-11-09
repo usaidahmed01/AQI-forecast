@@ -26,6 +26,13 @@ def main():
 
     # 2) normalize timestamp to UTC
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
+    
+    if "relative_humidity_2m" in df.columns:
+        df["relative_humidity_2m"] = (
+        pd.to_numeric(df["relative_humidity_2m"])
+        .round(0)
+        .astype("int64")
+    )      
 
     # if somehow a naive ts sneaks in, assume Asia/Karachi and convert
     if getattr(df["ts"].dt, "tz", None) is None:
