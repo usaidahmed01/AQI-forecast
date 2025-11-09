@@ -55,7 +55,7 @@ def _iso_utc(dt: datetime):
     return dt.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-# --------------------------- GEOCODING + WEATHER -----------------------------
+# GEOCODING + WEATHER 
 
 def geocode_city(city: str):
     
@@ -101,7 +101,7 @@ def fetch_weather(lat: float, lon: float, start: datetime, end: datetime, tz: st
     return df
 
 
-# ------------------------------- OPENAQ v3 -----------------------------------
+# OPENAQ 
 
 def find_pm25_location_ids(lat: float, lon: float, radius_m: int = MAX_RADIUS_M, limit: int = 1000):
 
