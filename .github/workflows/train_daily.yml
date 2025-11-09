@@ -75,10 +75,10 @@ jobs:
           ls -l models/latest || true
 
       #  commit the refreshed models/latest back to the repo
-      - name: Commit models/latest back to repo
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore(models): refresh models/latest from train-daily"
+      # - name: Commit models/latest back to repo
+      #   uses: stefanzweifel/git-auto-commit-action@v5
+      #   with:
+      #     commit_message: "CI/CD auto commits: models/latest from train-daily"
 
       #  check if Hopsworks secrets are available in repo settings
       - name: Check Hopsworks secrets
