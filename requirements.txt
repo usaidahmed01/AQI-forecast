@@ -2,13 +2,10 @@ pandas
 numpy
 requests
 python-dotenv
-
 pyarrow
 duckdb
-
 scikit-learn
 joblib
-
 streamlit
 gradio
 scipy

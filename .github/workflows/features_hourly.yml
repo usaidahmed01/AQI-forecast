@@ -47,4 +47,4 @@ jobs:
       - name: Commit updated features
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: update features"
+          commit_message: "CI/CD auto commits"

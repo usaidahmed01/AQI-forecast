@@ -6,10 +6,10 @@ Purpose:
   - Save the best model per horizon with versioning and a report
 
 Outputs:
-  models/<YYYY-MM-DD_HHMM>/
-    - <best>_tplus24.joblib
-    - <best>_tplus48.joblib
-    - <best>_tplus72.joblib
+  models/
+    - best_tplus24.joblib
+    - best_tplus48.joblib
+    - best_tplus72.joblib
     - features.json
     - report.json
   models/latest/   (copy of the latest run)

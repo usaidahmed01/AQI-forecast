@@ -1,86 +1,242 @@
+# name: train-daily
+
+# permissions:
+#   contents: write  # needed for auto-commit of models/latest
+
+# on:
+#   schedule:
+#     - cron: "0 19 * * *"
+#   workflow_dispatch:
+
+# jobs:
+#   train:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       # 1) get code
+#       - name: Checkout repo
+#         uses: actions/checkout@v4
+
+#       - name: Set up Python 3.11
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.11"
+
+#       # 3) install project deps
+#       - name: Install dependencies
+#         run: pip install -r requirements.txt
+
+#       # 4) train all horizons (24/48/72)
+#       - name: Train (multi-horizon)
+#         run: python src/train.py
+
+#       # 5) sync the newest trained models into models/latest
+#       - name: Sync models/latest directory
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+
+#           echo "=== MODELS TREE (before sync) ==="
+#           ls -R models || true
+
+#           mkdir -p models/latest
+#           rm -f models/latest/* || true
+
+#           # find the folder that actually produced the latest joblib
+#           newest_joblib="$(find models -type f -name '*tplus*.joblib' -printf '%T@ %p\n' | sort -n | tail -n1 | cut -d' ' -f2- || true)"
+#           if [ -n "${newest_joblib}" ]; then
+#             src_dir="$(dirname "${newest_joblib}")"
+#           else
+#             src_dir="models"
+#           fi
+
+#           echo "Using source directory: ${src_dir}"
+
+#           # copy the 3 horizons if present
+#           find "${src_dir}" -maxdepth 1 -name '*tplus24.joblib' -exec cp -t models/latest {} + || true
+#           find "${src_dir}" -maxdepth 1 -name '*tplus48.joblib' -exec cp -t models/latest {} + || true
+#           find "${src_dir}" -maxdepth 1 -name '*tplus72.joblib' -exec cp -t models/latest {} + || true
+
+#           # copy metadata
+#           if [ -f "${src_dir}/features.json" ]; then
+#             cp "${src_dir}/features.json" models/latest/
+#           elif [ -f "models/features.json" ]; then
+#             cp "models/features.json" models/latest/
+#           fi
+
+#           if [ -f "${src_dir}/report.json" ]; then
+#             cp "${src_dir}/report.json" models/latest/
+#           elif [ -f "models/report.json" ]; then
+#             cp "models/report.json" models/latest/
+#           fi
+
+#           echo "=== models/latest content ==="
+#           ls -l models/latest || true
+
+#       # 6) commit models/latest back to the repo (optional but handy)
+#       - name: Commit models/latest back to repo
+#         uses: stefanzweifel/git-auto-commit-action@v5
+#         with:
+#           commit_message: "chore(models): refresh models/latest from train-daily"
+
+#       # 7) check if Hopsworks secrets are present
+#       - name: Set Hopsworks presence flag
+#         shell: bash
+#         run: |
+#           if [ -n "${{ secrets.HOPSWORKS_PROJECT }}" ] && [ -n "${{ secrets.HOPSWORKS_API_KEY }}" ]; then
+#             echo "HAVE_HOPSWORKS=true" >> "$GITHUB_ENV"
+#           else
+#             echo "HAVE_HOPSWORKS=false" >> "$GITHUB_ENV"
+#           fi
+
+#       # 8) optional: push features to Hopsworks (only if secrets exist)
+#       - name: Set up Python 3.10 for Hopsworks feature push
+#         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.10"
+
+#       - name: Push features to Hopsworks
+#         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
+#         env:
+#           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+#           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+#         run: |
+#           set -e
+#           python -V
+#           pip install --upgrade "pip<25"
+#           # clean any earlier installs so deps don't clash
+#           pip uninstall -y hopsworks hsml hopsworks-common || true
+#           # install just what push_features_hopsworks.py uses
+#           pip install \
+#             "hsfs[python]==3.9.0rc7" \
+#             "protobuf>=4.25.4,<5" \
+#             "confluent-kafka<3" \
+#             pyhive thrift avro
+#           python src/push_features_hopsworks.py
+
+#       # 9) upload models as artifact (easy download from Actions)
+#       - name: Upload models artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: models
+#           path: models/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 name: train-daily
 
 permissions:
-  contents: write  # needed for auto-commit of models/latest
+  contents: write  
 
 on:
   schedule:
-    - cron: "0 19 * * *"
-  workflow_dispatch:
+    - cron: "0 19 * * *"   # every day at 19:00 UTC
+  workflow_dispatch:        # allow manual run from GitHub UI
 
 jobs:
   train:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) get code
+      # 1) get the code
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 2) Python version we use locally
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 3) install project deps
+      # 3) install project requirements
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 4) train all horizons (24/48/72)
-      - name: Train (multi-horizon)
+      # 4) run our training script
+      - name: Train models (24h / 48h / 72h)
         run: python src/train.py
 
-      # 5) sync the newest trained models into models/latest
-      - name: Sync models/latest directory
+      # 5) copy whatever we just trained into models/latest
+      - name: Update models/latest folder
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "=== MODELS TREE (before sync) ==="
+          echo "---- current models/ tree ----"
           ls -R models || true
 
+          # clean and recreate the 'latest' folder
           mkdir -p models/latest
           rm -f models/latest/* || true
 
-          # find the folder that actually produced the latest joblib
-          newest_joblib="$(find models -type f -name '*tplus*.joblib' -printf '%T@ %p\n' | sort -n | tail -n1 | cut -d' ' -f2- || true)"
-          if [ -n "${newest_joblib}" ]; then
-            src_dir="$(dirname "${newest_joblib}")"
+          # find the most recent joblib file we produced
+          # we look for files like rf_tplus24.joblib, ridge_tplus48.joblib, etc.
+          latest_model_file=$(find models -type f -name "*tplus*.joblib" -printf "%T@ %p\n" | sort -n | tail -n 1 | cut -d" " -f2- || true)
+
+          # if we found something, take its folder as the source
+          if [ -n "$latest_model_file" ]; then
+            src_dir=$(dirname "$latest_model_file")
           else
+            # fallback (should almost never happen)
             src_dir="models"
           fi
 
-          echo "Using source directory: ${src_dir}"
+          echo "copying models from: $src_dir"
 
-          # copy the 3 horizons if present
-          find "${src_dir}" -maxdepth 1 -name '*tplus24.joblib' -exec cp -t models/latest {} + || true
-          find "${src_dir}" -maxdepth 1 -name '*tplus48.joblib' -exec cp -t models/latest {} + || true
-          find "${src_dir}" -maxdepth 1 -name '*tplus72.joblib' -exec cp -t models/latest {} + || true
+          # copy the 3 horizons (if they exist)
+          cp "$src_dir"/*tplus24.joblib models/latest/ 2>/dev/null || true
+          cp "$src_dir"/*tplus48.joblib models/latest/ 2>/dev/null || true
+          cp "$src_dir"/*tplus72.joblib models/latest/ 2>/dev/null || true
 
-          # copy metadata
-          if [ -f "${src_dir}/features.json" ]; then
-            cp "${src_dir}/features.json" models/latest/
-          elif [ -f "models/features.json" ]; then
-            cp "models/features.json" models/latest/
+          # also copy the metadata files so Streamlit knows feature order + metrics
+          if [ -f "$src_dir/features.json" ]; then
+            cp "$src_dir/features.json" models/latest/
+          fi
+          if [ -f "$src_dir/report.json" ]; then
+            cp "$src_dir/report.json" models/latest/
           fi
 
-          if [ -f "${src_dir}/report.json" ]; then
-            cp "${src_dir}/report.json" models/latest/
-          elif [ -f "models/report.json" ]; then
-            cp "models/report.json" models/latest/
-          fi
-
-          echo "=== models/latest content ==="
+          echo "---- models/latest content ----"
           ls -l models/latest || true
 
-      # 6) commit models/latest back to the repo (optional but handy)
+      #  commit the refreshed models/latest back to the repo
       - name: Commit models/latest back to repo
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore(models): refresh models/latest from train-daily"
 
-      # 7) check if Hopsworks secrets are present
-      - name: Set Hopsworks presence flag
+      #  check if Hopsworks secrets are available in repo settings
+      - name: Check Hopsworks secrets
         shell: bash
         run: |
           if [ -n "${{ secrets.HOPSWORKS_PROJECT }}" ] && [ -n "${{ secrets.HOPSWORKS_API_KEY }}" ]; then
@@ -89,8 +245,8 @@ jobs:
             echo "HAVE_HOPSWORKS=false" >> "$GITHUB_ENV"
           fi
 
-      # 8) optional: push features to Hopsworks (only if secrets exist)
-      - name: Set up Python 3.10 for Hopsworks feature push
+      # push features to Hopsworks
+      - name: Set up Python 3.10 for Hopsworks
         if: ${{ env.HAVE_HOPSWORKS == 'true' }}
         uses: actions/setup-python@v5
         with:
@@ -103,19 +259,24 @@ jobs:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
           set -e
+
           python -V
           pip install --upgrade "pip<25"
-          # clean any earlier installs so deps don't clash
+
+          # remove old hopsworks libs if there
           pip uninstall -y hopsworks hsml hopsworks-common || true
-          # install just what push_features_hopsworks.py uses
+
+          # install the exact libs our push_features_hopsworks.py needs
           pip install \
             "hsfs[python]==3.9.0rc7" \
             "protobuf>=4.25.4,<5" \
             "confluent-kafka<3" \
             pyhive thrift avro
+
+          # actually push
           python src/push_features_hopsworks.py
 
-      # 9) upload models as artifact (easy download from Actions)
+      #  keep the models as an Actions artifact so we can download from UI
       - name: Upload models artifact
         uses: actions/upload-artifact@v4
         with:

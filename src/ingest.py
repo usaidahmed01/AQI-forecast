@@ -79,6 +79,7 @@ def geocode_city(city: str):
 def fetch_weather(lat: float, lon: float, start: datetime, end: datetime, tz: str):
     
     url = "https://api.open-meteo.com/v1/forecast"
+    # url = "https://archive-api.open-meteo.com/v1/archive"
     params = {
         "latitude": lat,
         "longitude": lon,
