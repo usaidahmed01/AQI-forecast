@@ -34,7 +34,7 @@ jobs:
         run: |
           echo "OPENAQ_API_KEY=${{ secrets.OPENAQ_API_KEY }}" >> $GITHUB_ENV
           echo "CITY=Karachi" >> $GITHUB_ENV
-          echo "LOOKBACK_DAYS=7" >> $GITHUB_ENV
+          echo "LOOKBACK_DAYS=90" >> $GITHUB_ENV
 
       # 5) run pipeline
       - name: Ingest latest data
