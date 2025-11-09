@@ -94,7 +94,13 @@ def build_features(
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     df.to_parquet(out_path)
-
+    
+    if "relative_humidity_2m" in df.columns:
+        df["relative_humidity_2m"] = (
+        pd.to_numeric(df["relative_humidity_2m"], errors="coerce")
+        .round(0)
+        .astype("int64")
+    )    
     return df
 
 

@@ -97,7 +97,7 @@ def fetch_weather(lat: float, lon: float, start: datetime, end: datetime, tz: st
     if not hourly:
         return pd.DataFrame(columns=["ts"] + WEATHER_VARS)
 
-    df = pd.DataFrame(hourly).rename(columns={"time": "ts"})
+    df = pd.DataFrame(hourly).rename(columns={"time": "ts"})        
     return df
 
 
